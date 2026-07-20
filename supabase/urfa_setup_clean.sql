@@ -3,7 +3,7 @@
 -- Kurum: Urfa İlahiyat Fakültesi (veya Herhangi Bir Yeni Kurum)
 -- Açıklama: Tüm veritabanı tabloları, RLS politikaları, fonksiyonlar, trigger'lar
 --           ve 59 alt ölçütün Türkçe/İngilizce/Arapça Kalite El Kitabı şablonları
---           EKSİKSİZ şekilde dahildir. Hiçbir hoca, ders veya izlence verisi içermez.
+--           EKSİKSİZ şekilde dahildir. İdempotent (defalarca çalıştırılabilir) yapıdadır.
 -- ==============================================================================
 
 -- 1. EKLENTİLER (EXTENSIONS)
@@ -210,7 +210,30 @@ ALTER TABLE public.ders_izlenceleri ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.duyurular ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.aktivite_gunlugu ENABLE ROW LEVEL SECURITY;
 
--- Okuma Politikaları (Giriş yapmış tüm kullanıcılar veya halka açık okuma)
+-- ESKİ POLİTİKALARI TEMİZLE (ÇAKIŞMAYI ÖNLEMEK İÇİN)
+DROP POLICY IF EXISTS "Herkes okuyabilir - donemler" ON public.donemler;
+DROP POLICY IF EXISTS "Herkes okuyabilir - profiller" ON public.profiller;
+DROP POLICY IF EXISTS "Herkes okuyabilir - ana_basliklar" ON public.ana_basliklar;
+DROP POLICY IF EXISTS "Herkes okuyabilir - alt_olcutler" ON public.alt_olcutler;
+DROP POLICY IF EXISTS "Herkes okuyabilir - kullanici_olcut_atamalari" ON public.kullanici_olcut_atamalari;
+DROP POLICY IF EXISTS "Herkes okuyabilir - puko_degerlendirmeleri" ON public.puko_degerlendirmeleri;
+DROP POLICY IF EXISTS "Herkes okuyabilir - ozdegerlendirme_raporlari" ON public.ozdegerlendirme_raporlari;
+DROP POLICY IF EXISTS "Herkes okuyabilir - eylem_planlari" ON public.eylem_planlari;
+DROP POLICY IF EXISTS "Herkes okuyabilir - dersler" ON public.dersler;
+DROP POLICY IF EXISTS "Herkes okuyabilir - ders_izlenceleri" ON public.ders_izlenceleri;
+DROP POLICY IF EXISTS "Herkes okuyabilir - duyurular" ON public.duyurular;
+DROP POLICY IF EXISTS "Herkes okuyabilir - aktivite_gunlugu" ON public.aktivite_gunlugu;
+
+DROP POLICY IF EXISTS "Kullanicilar kendi profilini güncelleyebilir veya yonetici" ON public.profiller;
+DROP POLICY IF EXISTS "Kullanici atamalari yonetim" ON public.kullanici_olcut_atamalari;
+DROP POLICY IF EXISTS "PUKO degerlendirmeleri yonetim" ON public.puko_degerlendirmeleri;
+DROP POLICY IF EXISTS "Ozdegerlendirme raporlari yonetim" ON public.ozdegerlendirme_raporlari;
+DROP POLICY IF EXISTS "Eylem planlari yonetim" ON public.eylem_planlari;
+DROP POLICY IF EXISTS "Ders izlenceleri yonetim" ON public.ders_izlenceleri;
+DROP POLICY IF EXISTS "Duyurular yonetim" ON public.duyurular;
+DROP POLICY IF EXISTS "Aktivite gunlugu yonetim" ON public.aktivite_gunlugu;
+
+-- YENİ POLİTİKALARI OLUŞTUR
 CREATE POLICY "Herkes okuyabilir - donemler" ON public.donemler FOR SELECT USING (true);
 CREATE POLICY "Herkes okuyabilir - profiller" ON public.profiller FOR SELECT USING (true);
 CREATE POLICY "Herkes okuyabilir - ana_basliklar" ON public.ana_basliklar FOR SELECT USING (true);
@@ -224,7 +247,6 @@ CREATE POLICY "Herkes okuyabilir - ders_izlenceleri" ON public.ders_izlenceleri 
 CREATE POLICY "Herkes okuyabilir - duyurular" ON public.duyurular FOR SELECT USING (true);
 CREATE POLICY "Herkes okuyabilir - aktivite_gunlugu" ON public.aktivite_gunlugu FOR SELECT USING (true);
 
--- Yazma/Guncelleme Politikaları (Oturum açmış kullanıcılar)
 CREATE POLICY "Kullanicilar kendi profilini güncelleyebilir veya yonetici" ON public.profiller FOR ALL USING (auth.uid() IS NOT NULL);
 CREATE POLICY "Kullanici atamalari yonetim" ON public.kullanici_olcut_atamalari FOR ALL USING (auth.uid() IS NOT NULL);
 CREATE POLICY "PUKO degerlendirmeleri yonetim" ON public.puko_degerlendirmeleri FOR ALL USING (auth.uid() IS NOT NULL);
