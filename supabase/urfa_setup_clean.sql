@@ -4,7 +4,8 @@
 -- Açıklama: Tüm veritabanı tabloları, RLS politikaları, fonksiyonlar, trigger'lar
 --           ve 59 alt ölçütün boş Kalite El Kitabı şablonları dahildir.
 --           ESKİŞEHİR'E DAİR HİÇBİR KULLANICI VERİSİ VEYA RAPOR METNİ İÇERMEZ.
---           BU SQL DOSYASI RECURSION-FREE (SONSUZ DÖNGÜSÜZ) RLS POLİTİKALARINI KURAR.
+--           BU SQL DOSYASI RECURSION-FREE (SONSUZ DÖNGÜSÜZ) RLS POLİTİKALARINI VE
+--           DERS İZLENCESİ UYUMLU ŞEMALARI KURAR.
 -- ==============================================================================
 
 -- 1. EKLENTİLER (EXTENSIONS)
@@ -131,28 +132,27 @@ CREATE TABLE IF NOT EXISTS public.eylem_planlari (
     olusturulma_tarihi TIMESTAMPTZ DEFAULT NOW()
 );
 
--- K. DERSLER (Müfredat Tablosu)
+-- K. DERSLER (Müfredat Tablosu - KOD primary key olmalı)
 CREATE TABLE IF NOT EXISTS public.dersler (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    kod TEXT UNIQUE NOT NULL,
-    ad TEXT NOT NULL,
-    ad_en TEXT,
-    yariyil INT NOT NULL,
-    ders_turu TEXT DEFAULT 'Zorunlu',
-    ders_dili TEXT DEFAULT 'Türkçe',
-    akts INT DEFAULT 0,
-    kredi_t INT DEFAULT 0,
-    kredi_u INT DEFAULT 0,
-    kredi_l INT DEFAULT 0
+    kod TEXT PRIMARY KEY,
+    ad TEXT DEFAULT '',
+    t INTEGER DEFAULT 0,
+    u INTEGER DEFAULT 0,
+    l INTEGER DEFAULT 0,
+    kredi INTEGER DEFAULT 0,
+    akts INTEGER DEFAULT 0,
+    yariyil TEXT DEFAULT '',
+    tur TEXT DEFAULT 'Zorunlu'
 );
 
--- L. DERS İZLENCELERİ
+-- L. DERS İZLENCELERİ (ders_id, dersler.kod tablosuna referans vermeli)
 CREATE TABLE IF NOT EXISTS public.ders_izlenceleri (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    ders_id BIGINT REFERENCES public.dersler(id) ON DELETE CASCADE,
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    ders_id TEXT REFERENCES public.dersler(kod) ON DELETE CASCADE,
     hoca_id UUID REFERENCES public.profiller(id) ON DELETE SET NULL,
+    icerik JSONB DEFAULT '{}'::jsonb,
     guncelleme_tarihi TIMESTAMPTZ DEFAULT NOW(),
-    icerik JSONB DEFAULT '{}'::jsonb
+    UNIQUE(ders_id, hoca_id)
 );
 
 -- M. DUYURULAR
@@ -260,7 +260,7 @@ RETURNS VOID AS $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')) THEN
     RAISE EXCEPTION 'Unauthorized: Atama yetkiniz yok.';
-  END IF;
+  END If;
 
   DELETE FROM public.kullanici_olcut_atamalari WHERE user_id = p_user_id AND donem_id = p_donem_id AND alt_olcut_id = ANY(p_scope_olcut_ids);
   DELETE FROM public.kullanici_olcut_atamalari WHERE donem_id = p_donem_id AND alt_olcut_id = ANY(p_selected_olcut_ids) AND user_id != p_user_id;
@@ -272,18 +272,58 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE FUNCTION public.rpc_v3_assign_koordinator(
+-- KOORDİNATÖR ATAMA V4 (Ders koordinatörü & Gözlemci atama desteği ile)
+CREATE OR REPLACE FUNCTION public.rpc_v4_assign_koordinator_with_role(
+  p_user_id UUID,
+  p_baslik TEXT,
+  p_rol TEXT -- 'Koordinatör' veya 'Gözlemci'
+)
+RETURNS VOID AS $$
+DECLARE
+  current_role TEXT;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')) THEN
+    RAISE EXCEPTION 'Unauthorized: Atama yapma yetkiniz yok.';
+  END IF;
+
+  SELECT rol INTO current_role FROM public.profiller WHERE id = p_user_id;
+
+  IF current_role ILIKE '%admin%' OR current_role ILIKE '%yönetici%' OR current_role ILIKE '%yonetici%' THEN
+    -- Yöneticinin rolü değiştirilemez
+  ELSE
+    IF p_rol = 'Gözlemci' OR p_rol = 'Gozlemci' THEN
+      UPDATE public.profiller SET rol = 'Gozlemci' WHERE id = p_user_id;
+    ELSE
+      UPDATE public.profiller SET rol = 'BirimSorumlusu' WHERE id = p_user_id;
+    END IF;
+  END IF;
+
+  DELETE FROM public.baslik_koordinatorleri WHERE kullanici_id = p_user_id AND baslik = p_baslik;
+  INSERT INTO public.baslik_koordinatorleri (kullanici_id, baslik) VALUES (p_user_id, p_baslik);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- KOORDİNATÖR SİLME V4
+CREATE OR REPLACE FUNCTION public.rpc_v4_remove_koordinator(
   p_user_id UUID,
   p_baslik TEXT
 )
 RETURNS VOID AS $$
+DECLARE
+  current_role TEXT;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')) THEN
-    RAISE EXCEPTION 'Unauthorized: Koordinatör atama yetkiniz yok.';
+    RAISE EXCEPTION 'Unauthorized: Atama silme yetkiniz yok.';
   END IF;
 
-  DELETE FROM public.baslik_koordinatorleri WHERE kullanici_id = p_user_id;
-  INSERT INTO public.baslik_koordinatorleri (kullanici_id, baslik) VALUES (p_user_id, p_baslik);
+  DELETE FROM public.baslik_koordinatorleri WHERE kullanici_id = p_user_id AND baslik = p_baslik;
+
+  IF NOT EXISTS (SELECT 1 FROM public.baslik_koordinatorleri WHERE kullanici_id = p_user_id) THEN
+    SELECT rol INTO current_role FROM public.profiller WHERE id = p_user_id;
+    IF current_role = 'Gozlemci' THEN
+      UPDATE public.profiller SET rol = 'BirimSorumlusu' WHERE id = p_user_id;
+    END IF;
+  END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -522,6 +562,56 @@ INSERT INTO public.alt_olcutler (id, kod, olcut_adi, olcut_adi_en, olcut_adi_ar,
 INSERT INTO public.alt_olcutler (id, kod, olcut_adi, olcut_adi_en, olcut_adi_ar, ana_baslik_id, kalite_el_kitabi) VALUES (62, 'E.4.1', 'Hizmet ve Malların Uygunluğu, Kalitesi ve Sürekliliği', 'Suitability, Quality and Continuity of Services and Goods', 'الملاءمة والجودة واستمرارية الخدمات والسلع', 5, '{"bgs_yeri":"","ic_paydaslar":"","dis_paydaslar":"","sorumlu_birim":"","aciklama_metni":"","aciklama_metni_en":"","uygulama_alanlari":"","ilk_planlama_tarihi":"","izleme_mekanizmalari":"","uluslararasi_paydaslar":"","performans_gostergeleri":"","degerlendirme_iyilestirme_tarihi":""}'::jsonb) ON CONFLICT (id) DO UPDATE SET olcut_adi = EXCLUDED.olcut_adi, kalite_el_kitabi = EXCLUDED.kalite_el_kitabi;
 INSERT INTO public.alt_olcutler (id, kod, olcut_adi, olcut_adi_en, olcut_adi_ar, ana_baslik_id, kalite_el_kitabi) VALUES (63, 'E.5.1', 'Kamuoyunu Bilgilendirme', 'Public Information', 'المعلومات العامة', 5, '{"bgs_yeri":"","ic_paydaslar":"","dis_paydaslar":"","sorumlu_birim":"","aciklama_metni":"","aciklama_metni_en":"","uygulama_alanlari":"","ilk_planlama_tarihi":"","izleme_mekanizmalari":"","uluslararasi_paydaslar":"","performans_gostergeleri":"","degerlendirme_iyilestirme_tarihi":""}'::jsonb) ON CONFLICT (id) DO UPDATE SET olcut_adi = EXCLUDED.olcut_adi, kalite_el_kitabi = EXCLUDED.kalite_el_kitabi;
 INSERT INTO public.alt_olcutler (id, kod, olcut_adi, olcut_adi_en, olcut_adi_ar, ana_baslik_id, kalite_el_kitabi) VALUES (64, 'E.5.2', 'Hesap Verme Yöntemleri', 'Methods of Accountability', 'أساليب المساءلة', 5, '{"bgs_yeri":"","ic_paydaslar":"","dis_paydaslar":"","sorumlu_birim":"","aciklama_metni":"","aciklama_metni_en":"","uygulama_alanlari":"","ilk_planlama_tarihi":"","izleme_mekanizmalari":"","uluslararasi_paydaslar":"","performans_gostergeleri":"","degerlendirme_iyilestirme_tarihi":""}'::jsonb) ON CONFLICT (id) DO UPDATE SET olcut_adi = EXCLUDED.olcut_adi, kalite_el_kitabi = EXCLUDED.kalite_el_kitabi;
+
+-- D. DERS LİSTESİ - TÜM YARIYILLAR (2024 EĞİTİM PLANI)
+INSERT INTO public.dersler (kod, ad, t, u, l, kredi, akts, yariyil, tur) VALUES
+('181111026', 'Kur’an Okuma ve Tecvid I', 2, 0, 0, 2, 3, 'I. YARIYIL', 'Zorunlu'),
+('181111025', 'Arap Dili I', 4, 0, 0, 4, 2, 'I. YARIYIL', 'Zorunlu'),
+('181111024', 'İslam Tarihi I', 2, 0, 0, 2, 5, 'I. YARIYIL', 'Zorunlu'),
+('181111038', 'Tefsir I', 2, 0, 0, 2, 5, 'I. YARIYIL', 'Zorunlu'),
+('181111039', 'Fıkıh I', 2, 0, 0, 2, 3, 'I. YARIYIL', 'Zorunlu'),
+('181111040', 'Kelam I', 2, 0, 0, 2, 3, 'I. YARIYIL', 'Zorunlu'),
+('181011001', 'Türk Dili I', 2, 0, 0, 2, 2, 'I. YARIYIL', 'Zorunlu'),
+('181011004', 'Atatürk İlkeleri ve İnkılap Tarihi I', 2, 0, 0, 2, 2, 'I. YARIYIL', 'Zorunlu'),
+('181011005', 'Yabancı Dil I', 2, 0, 0, 2, 2, 'I. YARIYIL', 'Zorunlu'),
+('181112041', 'Kur’an Okuma ve Tecvid II', 2, 0, 0, 2, 4, 'II. YARIYIL', 'Zorunlu'),
+('181112042', 'Arap Dili II', 4, 0, 0, 4, 2, 'II. YARIYIL', 'Zorunlu'),
+('181112043', 'İslam Tarihi II', 2, 0, 0, 2, 5, 'II. YARIYIL', 'Zorunlu'),
+('181112044', 'Tefsir II', 2, 0, 0, 2, 5, 'II. YARIYIL', 'Zorunlu'),
+('181112045', 'Fıkıh II', 2, 0, 0, 2, 4, 'II. YARIYIL', 'Zorunlu'),
+('181112046', 'Hadis II', 2, 0, 0, 2, 4, 'II. YARIYIL', 'Zorunlu'),
+('181012002', 'Türk Dili II', 2, 0, 0, 2, 2, 'II. YARIYIL', 'Zorunlu'),
+('181012003', 'Atatürk İlkeleri ve İnkılap Tarihi II', 2, 0, 0, 2, 2, 'II. YARIYIL', 'Zorunlu'),
+('181012006', 'Yabancı Dil II', 2, 0, 0, 2, 2, 'II. YARIYIL', 'Zorunlu'),
+('181113035', 'Tefsir III', 2, 0, 0, 2, 5, 'III. YARIYIL', 'Zorunlu'),
+('181113036', 'Hadis I', 2, 0, 0, 2, 3, 'III. YARIYIL', 'Zorunlu'),
+('181113037', 'Fıkıh III', 2, 0, 0, 2, 3, 'III. YARIYIL', 'Zorunlu'),
+('181113038', 'Kelam III', 2, 0, 0, 2, 2, 'III. YARIYIL', 'Zorunlu'),
+('181113039', 'İslam Tarihi III', 2, 0, 0, 2, 3, 'III. YARIYIL', 'Zorunlu'),
+('181113040', 'Arap Dili III', 2, 0, 0, 2, 3, 'III. YARIYIL', 'Zorunlu'),
+('181113041', 'Tasavvuf I', 2, 0, 0, 2, 5, 'III. YARIYIL', 'Zorunlu'),
+('181113050', 'Dinler Tarihi I', 2, 0, 0, 2, 3, 'III. YARIYIL', 'Zorunlu'),
+('181115060', 'Tefsir V', 2, 0, 0, 2, 6, 'V. YARIYIL', 'Zorunlu'),
+('181115061', 'Hadis III', 2, 0, 0, 2, 5, 'V. YARIYIL', 'Zorunlu'),
+('181115062', 'Fıkıh V', 2, 0, 0, 2, 4, 'V. YARIYIL', 'Zorunlu'),
+('181115063', 'Kelam V', 2, 0, 0, 2, 4, 'V. YARIYIL', 'Zorunlu'),
+('181115064', 'İslam Felsefesi I', 2, 0, 0, 2, 5, 'V. YARIYIL', 'Zorunlu'),
+('181115065', 'Din Eğitimi I', 2, 0, 0, 2, 4, 'V. YARIYIL', 'Zorunlu'),
+('181115066', 'Dinler Tarihi III', 2, 0, 0, 2, 4, 'V. YARIYIL', 'Zorunlu'),
+('181117072', 'Tefsir VII', 2, 0, 0, 2, 6, 'VII. YARIYIL', 'Zorunlu'),
+('181117073', 'Hadis V', 2, 0, 0, 2, 3, 'VII. YARIYIL', 'Zorunlu'),
+('181117074', 'Fıkıh VII', 2, 0, 0, 2, 4, 'VII. YARIYIL', 'Zorunlu'),
+('181117075', 'Kelam VII', 2, 0, 0, 2, 4, 'VII. YARIYIL', 'Zorunlu'),
+('181117046', 'İslam Sanatları', 2, 0, 0, 2, 4, 'VII. YARIYIL', 'Zorunlu'),
+('181117076', 'Mezuniyet Tezi / Bitirme Ödevi', 0, 4, 0, 2, 5, 'VII. YARIYIL', 'Zorunlu')
+ON CONFLICT (kod) DO UPDATE SET
+  ad = EXCLUDED.ad,
+  t = EXCLUDED.t,
+  u = EXCLUDED.u,
+  l = EXCLUDED.l,
+  kredi = EXCLUDED.kredi,
+  akts = EXCLUDED.akts,
+  yariyil = EXCLUDED.yariyil;
 
 -- ==============================================================================
 -- KURULUM TAMAMLATMA NOTU:
