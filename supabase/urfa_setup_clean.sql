@@ -4,7 +4,7 @@
 -- Açıklama: Tüm veritabanı tabloları, RLS politikaları, fonksiyonlar, trigger'lar
 --           ve 59 alt ölçütün boş Kalite El Kitabı şablonları dahildir.
 --           ESKİŞEHİR'E DAİR HİÇBİR KULLANICI VERİSİ VEYA RAPOR METNİ İÇERMEZ.
---           BU SQL DOSYASI TAM 18 TABLOYU VE YETKİ FONKSİYONLARINI EKSİKSİZ KURAR.
+--           BU SQL DOSYASI RECURSION-FREE (SONSUZ DÖNGÜSÜZ) RLS POLİTİKALARINI KURAR.
 -- ==============================================================================
 
 -- 1. EKLENTİLER (EXTENSIONS)
@@ -219,6 +219,17 @@ CREATE TABLE IF NOT EXISTS public.system_islem_loglari (
 
 -- 3. YETKİLENDİRİLMİŞ RPC FONKSİYONLARI (NEXT.JS KULLANIMI İÇİN)
 
+-- Rol Kontrol Yardımcı Fonksiyonu (SECURITY DEFINER - RLS Bypass Eder)
+CREATE OR REPLACE FUNCTION public.get_user_role(user_id UUID)
+RETURNS TEXT AS $$
+DECLARE
+  u_role TEXT;
+BEGIN
+  SELECT rol INTO u_role FROM public.profiller WHERE id = user_id;
+  RETURN COALESCE(u_role, 'Beklemede');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 CREATE OR REPLACE FUNCTION public.rpc_v3_assign_all_olcutler(
   p_user_id UUID,
   p_donem_id UUID,
@@ -230,7 +241,7 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized: Atama yapma yetkiniz yok.';
   END IF;
 
-  DELETE FROM public.kullanici_olcut_atamalari WHERE user_id = p_user_id AND donem_id = p_donem_id;
+  DELETE FROM public.kullanici_olcut_atamalari WHERE user_id = p_user_id && donem_id = p_donem_id;
 
   IF p_olcut_ids IS NOT NULL AND array_length(p_olcut_ids, 1) > 0 THEN
     INSERT INTO public.kullanici_olcut_atamalari (user_id, donem_id, alt_olcut_id)
@@ -297,18 +308,7 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- Rol Kontrol Yardımcı Fonksiyonu
-CREATE OR REPLACE FUNCTION public.get_user_role(user_id UUID)
-RETURNS TEXT AS $$
-DECLARE
-  u_role TEXT;
-BEGIN
-  SELECT rol INTO u_role FROM public.profiller WHERE id = user_id;
-  RETURN COALESCE(u_role, 'Beklemede');
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- 4. RLS (ROW LEVEL SECURITY) ETKİNLEŞTİRME VE POLİTİKALARI
+-- 4. RLS (ROW LEVEL SECURITY) ETKİNLEŞTİRME VE POLİTİKALARI (SONSUZ DÖNGÜ ENGELLEMELİ)
 
 ALTER TABLE public.donemler ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiller ENABLE ROW LEVEL SECURITY;
@@ -380,71 +380,71 @@ DROP POLICY IF EXISTS "izlenceler_all_own" ON public.ders_izlenceleri;
 DROP POLICY IF EXISTS "duyuru_okumalar_all" ON public.duyuru_okumalar;
 DROP POLICY IF EXISTS "bildirimler_all" ON public.bildirimler;
 
--- YENİ RLS POLİTİKALARINI OLUŞTUR
+-- YENİ RECURSION-FREE RLS POLİTİKALARINI OLUŞTUR
 
 -- profiller
 CREATE POLICY "profiller_read_all" ON public.profiller FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY "profiller_update_own" ON public.profiller FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "profiller_admin_all" ON public.profiller FOR ALL USING (EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
+CREATE POLICY "profiller_admin_all" ON public.profiller FOR ALL USING (public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
 
 -- donemler
 CREATE POLICY "donemler_read_all" ON public.donemler FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "donemler_admin_all" ON public.donemler FOR ALL USING (EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
+CREATE POLICY "donemler_admin_all" ON public.donemler FOR ALL USING (public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
 
 -- birimler
 CREATE POLICY "birimler_read_all" ON public.birimler FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "birimler_admin_all" ON public.birimler FOR ALL USING (EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
+CREATE POLICY "birimler_admin_all" ON public.birimler FOR ALL USING (public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
 
 -- system_islem_loglari
-CREATE POLICY "system_islem_loglari_read" ON public.system_islem_loglari FOR SELECT USING (EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')) OR EXISTS (SELECT 1 FROM public.baslik_koordinatorleri WHERE kullanici_id = auth.uid()));
+CREATE POLICY "system_islem_loglari_read" ON public.system_islem_loglari FOR SELECT USING (public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']) OR EXISTS (SELECT 1 FROM public.baslik_koordinatorleri WHERE kullanici_id = auth.uid()));
 CREATE POLICY "system_islem_loglari_insert" ON public.system_islem_loglari FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 -- duyurular
 CREATE POLICY "duyurular_read_all" ON public.duyurular FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "duyurular_admin_all" ON public.duyurular FOR ALL USING (EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
+CREATE POLICY "duyurular_admin_all" ON public.duyurular FOR ALL USING (public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
 
 -- duyuru_okumalar
 CREATE POLICY "duyuru_okumalar_all" ON public.duyuru_okumalar FOR ALL USING (auth.role() = 'authenticated');
 
 -- anketler
 CREATE POLICY "anketler_read_all" ON public.anketler FOR SELECT USING (true);
-CREATE POLICY "anketler_manage_assigned" ON public.anketler FOR ALL USING (EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.anketler.alt_olcut_id::integer AND ka.user_id = auth.uid()) OR EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
+CREATE POLICY "anketler_manage_assigned" ON public.anketler FOR ALL USING (EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.anketler.alt_olcut_id::integer AND ka.user_id = auth.uid()) OR public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
 
 -- anket_cevaplari
 CREATE POLICY "anket_cevaplari_insert" ON public.anket_cevaplari FOR INSERT WITH CHECK (true);
-CREATE POLICY "anket_cevaplari_read_assigned" ON public.anket_cevaplari FOR SELECT USING (EXISTS (SELECT 1 FROM public.anketler a LEFT JOIN public.kullanici_olcut_atamalari ka ON ka.alt_olcut_id = a.alt_olcut_id::integer WHERE a.id = public.anket_cevaplari.anket_id AND (ka.user_id = auth.uid() OR EXISTS (SELECT 1 FROM public.profiller p WHERE p.id = auth.uid() AND (p.rol ILIKE '%admin%' OR p.rol ILIKE '%yönetici%' OR p.rol ILIKE '%yonetici%')))));
+CREATE POLICY "anket_cevaplari_read_assigned" ON public.anket_cevaplari FOR SELECT USING (EXISTS (SELECT 1 FROM public.anketler a LEFT JOIN public.kullanici_olcut_atamalari ka ON ka.alt_olcut_id = a.alt_olcut_id::integer WHERE a.id = public.anket_cevaplari.anket_id AND (ka.user_id = auth.uid() OR public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']))));
 
 -- ana_basliklar & alt_olcutler
 CREATE POLICY "ana_basliklar_read" ON public.ana_basliklar FOR SELECT USING (true);
 CREATE POLICY "alt_olcutler_read" ON public.alt_olcutler FOR SELECT USING (true);
-CREATE POLICY "ana_basliklar_admin" ON public.ana_basliklar FOR ALL USING (EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
-CREATE POLICY "alt_olcutler_update_assigned" ON public.alt_olcutler FOR UPDATE USING (EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.alt_olcutler.id AND ka.user_id = auth.uid()) OR EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
-CREATE POLICY "alt_olcutler_admin_insert_delete" ON public.alt_olcutler FOR ALL USING (EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
+CREATE POLICY "ana_basliklar_admin" ON public.ana_basliklar FOR ALL USING (public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
+CREATE POLICY "alt_olcutler_update_assigned" ON public.alt_olcutler FOR UPDATE USING (EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.alt_olcutler.id AND ka.user_id = auth.uid()) OR public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
+CREATE POLICY "alt_olcutler_admin_insert_delete" ON public.alt_olcutler FOR ALL USING (public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
 
 -- kullanici_olcut_atamalari
-CREATE POLICY "Users can view own assignments" ON public.kullanici_olcut_atamalari FOR SELECT USING (auth.uid() = user_id OR EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
-CREATE POLICY "Admins can modify assignments" ON public.kullanici_olcut_atamalari FOR ALL USING (EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
+CREATE POLICY "Users can view own assignments" ON public.kullanici_olcut_atamalari FOR SELECT USING (auth.uid() = user_id OR public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
+CREATE POLICY "Admins can modify assignments" ON public.kullanici_olcut_atamalari FOR ALL USING (public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
 
 -- baslik_koordinatorleri
 CREATE POLICY "Viewable by all" ON public.baslik_koordinatorleri FOR SELECT USING (true);
-CREATE POLICY "Only admins can modify coordinators" ON public.baslik_koordinatorleri FOR ALL USING (EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
+CREATE POLICY "Only admins can modify coordinators" ON public.baslik_koordinatorleri FOR ALL USING (public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
 
 -- puko_degerlendirmeleri (Güvenli select ve update)
-CREATE POLICY "puko_degerlendirmeleri_read_secure" ON public.puko_degerlendirmeleri FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%' OR rol ILIKE '%gözlemci%' OR rol ILIKE '%gozlemci%')) OR EXISTS (SELECT 1 FROM public.baslik_koordinatorleri bk JOIN public.alt_olcutler ao ON ao.id = public.puko_degerlendirmeleri.alt_olcut_id JOIN public.ana_basliklar ab ON ab.id = ao.ana_baslik_id WHERE bk.kullanici_id = auth.uid() AND ((bk.baslik = 'Kalite Güvencesi' AND ab.baslik_adi = 'KALİTE GÜVENCESİ SİSTEMİ') OR (bk.baslik = 'Eğitim-Öğretim' AND ab.baslik_adi = 'EĞİTİM VE ÖĞRETİM') OR (bk.baslik = 'Araştırma ve Geliştirme' AND ab.baslik_adi = 'ARAŞTIRMA VE GELİŞTİRME') OR (bk.baslik = 'Toplumsal Katkı' AND ab.baslik_adi = 'TOPLUMSAL KATKI') OR (bk.baslik = 'Yönetim Sistemi' AND ab.baslik_adi = 'YÖNETİM SİSTEMİ'))) OR EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.puko_degerlendirmeleri.alt_olcut_id AND ka.user_id = auth.uid()));
-CREATE POLICY "Users can manage assigned evaluations" ON public.puko_degerlendirmeleri FOR ALL USING (EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.puko_degerlendirmeleri.alt_olcut_id AND ka.user_id = auth.uid()) OR EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
+CREATE POLICY "puko_degerlendirmeleri_read_secure" ON public.puko_degerlendirmeleri FOR SELECT TO authenticated USING (public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%', '%gözlemci%', '%gozlemci%']) OR EXISTS (SELECT 1 FROM public.baslik_koordinatorleri bk JOIN public.alt_olcutler ao ON ao.id = public.puko_degerlendirmeleri.alt_olcut_id JOIN public.ana_basliklar ab ON ab.id = ao.ana_baslik_id WHERE bk.kullanici_id = auth.uid() AND ((bk.baslik = 'Kalite Güvencesi' AND ab.baslik_adi = 'KALİTE GÜVENCESİ SİSTEMİ') OR (bk.baslik = 'Eğitim-Öğretim' AND ab.baslik_adi = 'EĞİTİM VE ÖĞRETİM') OR (bk.baslik = 'Araştırma ve Geliştirme' AND ab.baslik_adi = 'ARAŞTIRMA VE GELİŞTİRME') OR (bk.baslik = 'Toplumsal Katkı' AND ab.baslik_adi = 'TOPLUMSAL KATKI') OR (bk.baslik = 'Yönetim Sistemi' AND ab.baslik_adi = 'YÖNETİM SİSTEMİ'))) OR EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.puko_degerlendirmeleri.alt_olcut_id AND ka.user_id = auth.uid()));
+CREATE POLICY "Users can manage assigned evaluations" ON public.puko_degerlendirmeleri FOR ALL USING (EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.puko_degerlendirmeleri.alt_olcut_id AND ka.user_id = auth.uid()) OR public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
 
 -- ozdegerlendirme_raporlari
-CREATE POLICY "ozdegerlendirme_raporlari_read_secure" ON public.ozdegerlendirme_raporlari FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%' OR rol ILIKE '%gözlemci%' OR rol ILIKE '%gozlemci%')) OR EXISTS (SELECT 1 FROM public.baslik_koordinatorleri bk JOIN public.alt_olcutler ao ON ao.id = public.ozdegerlendirme_raporlari.alt_olcut_id::integer JOIN public.ana_basliklar ab ON ab.id = ao.ana_baslik_id WHERE bk.kullanici_id = auth.uid() AND ((bk.baslik = 'Kalite Güvencesi' AND ab.baslik_adi = 'KALİTE GÜVENCESİ SİSTEMİ') OR (bk.baslik = 'Eğitim-Öğretim' AND ab.baslik_adi = 'EĞİTİM VE ÖĞRETİM') OR (bk.baslik = 'Araştırma ve Geliştirme' AND ab.baslik_adi = 'ARAŞTIRMA VE GELİŞTİRME') OR (bk.baslik = 'Toplumsal Katkı' AND ab.baslik_adi = 'TOPLUMSAL KATKI') OR (bk.baslik = 'Yönetim Sistemi' AND ab.baslik_adi = 'YÖNETİM SİSTEMİ'))) OR EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.ozdegerlendirme_raporlari.alt_olcut_id::integer AND ka.user_id = auth.uid()));
-CREATE POLICY "Users can manage assigned reports" ON public.ozdegerlendirme_raporlari FOR ALL USING (EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.ozdegerlendirme_raporlari.alt_olcut_id::integer AND ka.user_id = auth.uid()) OR EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
+CREATE POLICY "ozdegerlendirme_raporlari_read_secure" ON public.ozdegerlendirme_raporlari FOR SELECT TO authenticated USING (public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%', '%gözlemci%', '%gozlemci%']) OR EXISTS (SELECT 1 FROM public.baslik_koordinatorleri bk JOIN public.alt_olcutler ao ON ao.id = public.ozdegerlendirme_raporlari.alt_olcut_id::integer JOIN public.ana_basliklar ab ON ab.id = ao.ana_baslik_id WHERE bk.kullanici_id = auth.uid() AND ((bk.baslik = 'Kalite Güvencesi' AND ab.baslik_adi = 'KALİTE GÜVENCESİ SİSTEMİ') OR (bk.baslik = 'Eğitim-Öğretim' AND ab.baslik_adi = 'EĞİTİM VE ÖĞRETİM') OR (bk.baslik = 'Araştırma ve Geliştirme' AND ab.baslik_adi = 'ARAŞTIRMA VE GELİŞTİRME') OR (bk.baslik = 'Toplumsal Katkı' AND ab.baslik_adi = 'TOPLUMSAL KATKI') OR (bk.baslik = 'Yönetim Sistemi' AND ab.baslik_adi = 'YÖNETİM SİSTEMİ'))) OR EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.ozdegerlendirme_raporlari.alt_olcut_id::integer AND ka.user_id = auth.uid()));
+CREATE POLICY "Users can manage assigned reports" ON public.ozdegerlendirme_raporlari FOR ALL USING (EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.ozdegerlendirme_raporlari.alt_olcut_id::integer AND ka.user_id = auth.uid()) OR public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
 
 -- eylem_planlari
 CREATE POLICY "eylem_planlari_read_all" ON public.eylem_planlari FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "eylem_planlari_all" ON public.eylem_planlari FOR ALL USING (EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.eylem_planlari.alt_olcut_id AND ka.user_id = auth.uid()) OR EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
+CREATE POLICY "eylem_planlari_all" ON public.eylem_planlari FOR ALL USING (EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.eylem_planlari.alt_olcut_id AND ka.user_id = auth.uid()) OR public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
 
 -- dersler & ders_izlenceleri
 CREATE POLICY "dersler_read_all" ON public.dersler FOR SELECT USING (true);
 CREATE POLICY "izlenceler_read_all" ON public.ders_izlenceleri FOR SELECT USING (true);
-CREATE POLICY "izlenceler_all_own" ON public.ders_izlenceleri FOR ALL USING (auth.uid() = hoca_id OR EXISTS (SELECT 1 FROM public.profiller WHERE id = auth.uid() AND (rol ILIKE '%admin%' OR rol ILIKE '%yönetici%' OR rol ILIKE '%yonetici%')));
+CREATE POLICY "izlenceler_all_own" ON public.ders_izlenceleri FOR ALL USING (auth.uid() = hoca_id OR public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
 
 -- bildirimler
 CREATE POLICY "bildirimler_all" ON public.bildirimler FOR ALL USING (auth.role() = 'authenticated');
