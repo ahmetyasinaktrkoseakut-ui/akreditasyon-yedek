@@ -11,7 +11,10 @@ Sistemi yeni bir kurum için (örneğin Urfa İlahiyat Fakültesi) sıfırdan ku
 2. Sol menüdeki **SQL Editor** (`>_`) sekmesine tıklayın ve **"New query"** butonuna basın.
 3. Bu klasör içindeki `supabase/urfa_setup_clean.sql` dosyasının **tüm içeriğini kopyalayıp** buraya yapıştırın ve **"Run"** butonuna basın.
    - *Bu işlem; veritabanı tablolarını, rol güvenlik politikalarını (RLS), otomatik profil oluşturma trigger'ını ve 59 alt ölçütün eksiksiz Kalite El Kitabı metinlerini tek seferde sıfır hata ile kuracaktır.*
-4. Sol menüdeki **Storage** (📦) sekmesine girip **"New bucket"** butonuna basın. Klasör adını **`dokumanlar`** yapın ve erişimini herkese açık (Public) olarak kaydedin.
+4. Sol menüdeki **Storage** (📦) sekmesine girip sırasıyla iki adet kova (bucket) oluşturun:
+   - Adı **`dokumanlar`** olacak şekilde bir kova oluşturup erişimini **Public** yapın.
+   - Adı **`kanit_dosyalari`** olacak şekilde ikinci bir kova oluşturup erişimini **Public** yapın.
+   - *(Kanıt yükleme sisteminin sorunsuz çalışması için iki kovanın da herkese açık (Public) olması şarttır.)*
 
 ---
 

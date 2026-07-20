@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS public.profiller (
 CREATE TABLE IF NOT EXISTS public.birimler (
     id INT PRIMARY KEY,
     birim_adi VARCHAR(255) NOT NULL,
+    ad VARCHAR(255) GENERATED ALWAYS AS (birim_adi) STORED,
     olusturulma_tarihi TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -103,17 +104,17 @@ CREATE TABLE IF NOT EXISTS public.puko_degerlendirmeleri (
 
 -- I. ÖZDEĞERLENDİRME RAPORLARI
 CREATE TABLE IF NOT EXISTS public.ozdegerlendirme_raporlari (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     alt_olcut_id TEXT NOT NULL,
-    icerik TEXT,
-    icerik_en TEXT,
-    kanitlar JSONB DEFAULT '[]'::jsonb,
-    durum TEXT DEFAULT 'Taslak',
-    red_nedeni TEXT,
-    birim_anket_degerlendirmesi TEXT,
     donem_id UUID REFERENCES public.donemler(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES public.profiller(id) ON DELETE SET NULL,
-    olusturulma_tarihi TIMESTAMPTZ DEFAULT NOW()
+    icerik TEXT,
+    kanitlar JSONB DEFAULT '[]'::jsonb,
+    olusturulma_tarihi TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
+    onay_durumu TEXT DEFAULT 'bekliyor',
+    red_nedeni TEXT,
+    yonetici_anket_analizi TEXT,
+    birim_anket_degerlendirmesi TEXT,
+    icerik_en TEXT
 );
 
 -- J. EYLEM PLANLARI
@@ -475,7 +476,7 @@ CREATE POLICY "Users can manage assigned evaluations" ON public.puko_degerlendir
 
 -- ozdegerlendirme_raporlari
 CREATE POLICY "ozdegerlendirme_raporlari_read_secure" ON public.ozdegerlendirme_raporlari FOR SELECT TO authenticated USING (public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%', '%gözlemci%', '%gozlemci%']) OR EXISTS (SELECT 1 FROM public.baslik_koordinatorleri bk JOIN public.alt_olcutler ao ON ao.id::text = public.ozdegerlendirme_raporlari.alt_olcut_id JOIN public.ana_basliklar ab ON ab.id = ao.ana_baslik_id WHERE bk.kullanici_id = auth.uid() AND ((bk.baslik = 'Kalite Güvencesi' AND ab.baslik_adi = 'KALİTE GÜVENCESİ SİSTEMİ') OR (bk.baslik = 'Eğitim-Öğretim' AND ab.baslik_adi = 'EĞİTİM VE ÖĞRETİM') OR (bk.baslik = 'Araştırma ve Geliştirme' AND ab.baslik_adi = 'ARAŞTIRMA VE GELİŞTİRME') OR (bk.baslik = 'Toplumsal Katkı' AND ab.baslik_adi = 'TOPLUMSAL KATKI') OR (bk.baslik = 'Yönetim Sistemi' AND ab.baslik_adi = 'YÖNETİM SİSTEMİ'))) OR EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id::text = public.ozdegerlendirme_raporlari.alt_olcut_id AND ka.user_id = auth.uid()));
-CREATE POLICY "Users can manage assigned reports" ON public.ozdegerlendirme_raporlari FOR ALL USING (EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id = public.ozdegerlendirme_raporlari.alt_olcut_id::integer AND ka.user_id = auth.uid()) OR public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
+CREATE POLICY "Users can manage assigned reports" ON public.ozdegerlendirme_raporlari FOR ALL USING (EXISTS (SELECT 1 FROM public.kullanici_olcut_atamalari ka WHERE ka.alt_olcut_id::text = public.ozdegerlendirme_raporlari.alt_olcut_id AND ka.user_id = auth.uid()) OR public.get_user_role(auth.uid()) ILIKE ANY (ARRAY['%admin%', '%yönetici%', '%yonetici%']));
 
 -- eylem_planlari
 CREATE POLICY "eylem_planlari_read_all" ON public.eylem_planlari FOR SELECT USING (auth.role() = 'authenticated');
