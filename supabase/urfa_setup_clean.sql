@@ -241,7 +241,7 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized: Atama yapma yetkiniz yok.';
   END IF;
 
-  DELETE FROM public.kullanici_olcut_atamalari WHERE user_id = p_user_id && donem_id = p_donem_id;
+  DELETE FROM public.kullanici_olcut_atamalari WHERE user_id = p_user_id AND donem_id = p_donem_id;
 
   IF p_olcut_ids IS NOT NULL AND array_length(p_olcut_ids, 1) > 0 THEN
     INSERT INTO public.kullanici_olcut_atamalari (user_id, donem_id, alt_olcut_id)
