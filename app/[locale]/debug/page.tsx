@@ -4,11 +4,11 @@ export const dynamic = 'force-dynamic';
 
 export default async function DebugPage() {
   const supabase = await createClient();
-  let authUser = null;
-  let profile = null;
-  let dbError = null;
-  let activePeriod = null;
-  let periodError = null;
+  let authUser: any = null;
+  let profile: any = null;
+  let dbError: any = null;
+  let activePeriod: any = null;
+  let periodError: any = null;
 
   try {
     const { data: { user } } = await supabase.auth.getUser();
