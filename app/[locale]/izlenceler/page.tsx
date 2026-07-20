@@ -22,15 +22,9 @@ export default async function IzlencelerPage() {
     
     // Daha kapsayıcı Regex kontrolü (Türkçe karakter ve farklı yazım türleri için)
     const isYonetici = /admin|yonetici|yönetici|manager/i.test(userRole) || user.user_metadata?.isAdmin === true;
-
-    const isKurumsalPersonel = (
-      email.endsWith('@ogu.edu.tr') || 
-      email.endsWith('@esogu.edu.tr') || 
-      email.endsWith('.ogu.tr') || 
-      email.endsWith('@ogu.tr')
-    ) && !email.includes('ogrenci') && !email.includes('std');
+    const isBirimSorumlusu = /birim/i.test(userRole);
     
-    isAuthorizedToEdit = isYonetici || isKurumsalPersonel;
+    isAuthorizedToEdit = isYonetici || isBirimSorumlusu;
   }
 
   // Tüm dersleri ve izlenceleri çek

@@ -34,15 +34,9 @@ export default async function DersIzlenceleriPage({ searchParams }: { searchPara
   const userRole = (profile?.rol || user.user_metadata?.role || '').toLowerCase();
   // Daha kapsayıcı Regex kontrolü (Türkçe karakter ve farklı yazım türleri için)
   const isYonetici = /admin|yonetici|yönetici|manager/i.test(userRole) || user.user_metadata?.isAdmin === true;
+  const isBirimSorumlusu = /birim/i.test(userRole);
 
-  const isKurumsalPersonel = (
-    email.endsWith('@ogu.edu.tr') || 
-    email.endsWith('@esogu.edu.tr') || 
-    email.endsWith('.ogu.tr') || 
-    email.endsWith('@ogu.tr')
-  ) && !email.includes('ogrenci') && !email.includes('std');
-
-  if (!isYonetici && !isKurumsalPersonel) {
+  if (!isYonetici && !isBirimSorumlusu) {
     // Yetkisi yoksa genel izlenceler (sadece görüntüleme) sayfasına yönlendir
     redirect(`/izlenceler/${kod}`);
   }
