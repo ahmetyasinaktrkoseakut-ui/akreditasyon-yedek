@@ -4,6 +4,7 @@ import { useState, useEffect, use, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { Loader2, Info, FileSignature, FileText, CheckCircle2, FileSearch, Download, Save, Plus, Link as LinkIcon } from 'lucide-react';
 import StepPanel from '@/components/StepPanel';
+import { useTranslations, useLocale } from 'next-intl';
 import { getLocalizedField } from '@/lib/i18n-utils';
 import { validateFileSize } from '@/lib/utils';
 import { usePeriod } from '@/contexts/PeriodContext';

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Presentation, Activity, Calendar, Info, Hash, Upload, X, Loader2, Check } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useRouter } from '@/i18n/routing';
+import { useLocale, useTranslations } from 'next-intl';
 import { getLocalizedField } from '@/lib/i18n-utils';
 import { validateFileSize } from '@/lib/utils';
 
