@@ -4,8 +4,8 @@ import { useState, useEffect, use, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { Loader2, Info, FileSignature, FileText, CheckCircle2, FileSearch, Download, Save, Plus, Link as LinkIcon } from 'lucide-react';
 import StepPanel from '@/components/StepPanel';
-import { useTranslations, useLocale } from 'next-intl';
 import { getLocalizedField } from '@/lib/i18n-utils';
+import { validateFileSize } from '@/lib/utils';
 import { usePeriod } from '@/contexts/PeriodContext';
 import RichTextEditor, { RichTextEditorRef } from '@/components/RichTextEditor';
 import { logAction } from '@/lib/logger';
@@ -508,6 +508,14 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
     if (!event.target.files || event.target.files.length === 0 || !newEvidenceName.trim()) return;
     
     const file = event.target.files[0];
+    
+    const validation = validateFileSize(file);
+    if (!validation.valid) {
+      alert(validation.error);
+      event.target.value = '';
+      return;
+    }
+
     setIsUploadingInText(true);
     
     try {

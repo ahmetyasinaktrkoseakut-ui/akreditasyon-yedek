@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import { Presentation, Activity, Calendar, Info, Hash, Upload, X, Loader2, Check } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useRouter } from '@/i18n/routing';
-import { useLocale, useTranslations } from 'next-intl';
 import { getLocalizedField } from '@/lib/i18n-utils';
+import { validateFileSize } from '@/lib/utils';
 
 const getAsamaSlug = (asama: string) => {
   if (!asama) return 'kontrol-etme';
@@ -135,6 +135,12 @@ export default function BildirimlerTableClient({ initialData, isApprover = false
   const handleRevizeSubmit = async () => {
     if (!file || !selectedRow) return;
     
+    const validation = validateFileSize(file);
+    if (!validation.valid) {
+      setModalError(validation.error!);
+      return;
+    }
+
     setIsSubmitting(true);
     setModalError(null);
 
@@ -352,7 +358,20 @@ export default function BildirimlerTableClient({ initialData, isApprover = false
                     <div className="flex text-sm text-slate-600 justify-center">
                       <label htmlFor="file-upload-revize" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500 px-2 py-1 shadow-sm border border-slate-200">
                         <span>{t('modal.select_file')}</span>
-                        <input id="file-upload-revize" name="file-upload-revize" type="file" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                        <input id="file-upload-revize" name="file-upload-revize" type="file" className="sr-only" onChange={(e) => {
+                          const selected = e.target.files?.[0] || null;
+                          if (selected) {
+                            const v = validateFileSize(selected);
+                            if (!v.valid) {
+                              setModalError(v.error!);
+                              setFile(null);
+                              e.target.value = '';
+                              return;
+                            }
+                          }
+                          setModalError(null);
+                          setFile(selected);
+                        }} />
                       </label>
                     </div>
                     <p className="text-xs text-slate-500 mt-2">

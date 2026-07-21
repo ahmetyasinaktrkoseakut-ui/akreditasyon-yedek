@@ -6,8 +6,8 @@ import { Loader2, Plus, Info, Save, Link as LinkIcon, Settings, CalendarDays, Ex
 import { useTranslations, useLocale } from 'next-intl';
 import { logAction } from '@/lib/logger';
 import StepPanel from '@/components/StepPanel';
-import RichTextEditor from '@/components/RichTextEditor';
 import { getLocalizedField } from '@/lib/i18n-utils';
+import { validateFileSize } from '@/lib/utils';
 import { usePeriod } from '@/contexts/PeriodContext';
 
 interface Eylem {
@@ -304,6 +304,13 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
     if (!event.target.files || event.target.files.length === 0) return;
     const file = event.target.files[0];
     
+    const validation = validateFileSize(file);
+    if (!validation.valid) {
+      alert(validation.error);
+      event.target.value = '';
+      return;
+    }
+
     setUploadingDoc(true);
     try {
       const fileExt = file.name.split('.').pop();
