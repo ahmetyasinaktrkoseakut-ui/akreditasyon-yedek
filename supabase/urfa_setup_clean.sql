@@ -468,6 +468,27 @@ CREATE POLICY "izlenceler_all_own" ON public.ders_izlenceleri FOR ALL USING (aut
 
 CREATE POLICY "bildirimler_all" ON public.bildirimler FOR ALL USING (auth.role() = 'authenticated');
 
+-- STORAGE (DOSYA DEPOLAMA) POLİTİKALARI (dokumanlar & kanit_dosyalari)
+DROP POLICY IF EXISTS "dokumanlar_select" ON storage.objects;
+DROP POLICY IF EXISTS "dokumanlar_insert" ON storage.objects;
+DROP POLICY IF EXISTS "dokumanlar_update" ON storage.objects;
+DROP POLICY IF EXISTS "dokumanlar_delete" ON storage.objects;
+
+DROP POLICY IF EXISTS "kanit_dosyalari_select" ON storage.objects;
+DROP POLICY IF EXISTS "kanit_dosyalari_insert" ON storage.objects;
+DROP POLICY IF EXISTS "kanit_dosyalari_update" ON storage.objects;
+DROP POLICY IF EXISTS "kanit_dosyalari_delete" ON storage.objects;
+
+CREATE POLICY "dokumanlar_select" ON storage.objects FOR SELECT USING (bucket_id = 'dokumanlar');
+CREATE POLICY "dokumanlar_insert" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'dokumanlar');
+CREATE POLICY "dokumanlar_update" ON storage.objects FOR UPDATE USING (bucket_id = 'dokumanlar');
+CREATE POLICY "dokumanlar_delete" ON storage.objects FOR DELETE USING (bucket_id = 'dokumanlar');
+
+CREATE POLICY "kanit_dosyalari_select" ON storage.objects FOR SELECT USING (bucket_id = 'kanit_dosyalari');
+CREATE POLICY "kanit_dosyalari_insert" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'kanit_dosyalari');
+CREATE POLICY "kanit_dosyalari_update" ON storage.objects FOR UPDATE USING (bucket_id = 'kanit_dosyalari');
+CREATE POLICY "kanit_dosyalari_delete" ON storage.objects FOR DELETE USING (bucket_id = 'kanit_dosyalari');
+
 -- 5. SABİT VERİLER (SEED DATA) INSERT İŞLEMLERİ
 
 -- A. DÖNEM VERİSİ
