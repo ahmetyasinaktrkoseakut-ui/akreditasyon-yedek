@@ -262,12 +262,19 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       if (deletedDocs.length > 0) {
         for (const doc of deletedDocs) {
           if (doc.url) {
-            const urlParts = doc.url.split('/');
-            const fileName = urlParts[urlParts.length - 1];
-            const { error: storageError } = await supabase.storage.from('dokumanlar').remove([fileName]);
-            if (storageError) {
-              console.error('Dosya silinirken hata oluştu:', storageError);
-              throw storageError;
+            let bucketPath = '';
+            if (doc.url.includes('/dokumanlar/')) {
+              bucketPath = doc.url.split('/dokumanlar/')[1]?.split('?')[0];
+            } else {
+              const urlParts = doc.url.split('/');
+              bucketPath = urlParts[urlParts.length - 1]?.split('?')[0];
+            }
+            if (bucketPath) {
+              const decodedPath = decodeURIComponent(bucketPath);
+              const { error: storageError } = await supabase.storage.from('dokumanlar').remove([decodedPath]);
+              if (storageError) {
+                console.error('Dosya silinirken hata oluştu:', storageError);
+              }
             }
             
             await logAction({
