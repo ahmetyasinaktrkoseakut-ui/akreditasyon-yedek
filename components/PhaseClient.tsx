@@ -6,6 +6,7 @@ import { Loader2, Plus, Info, Save, Link as LinkIcon, Settings, CalendarDays, Ex
 import { useTranslations, useLocale } from 'next-intl';
 import { logAction } from '@/lib/logger';
 import StepPanel from '@/components/StepPanel';
+import RichTextEditor from '@/components/RichTextEditor';
 import { getLocalizedField } from '@/lib/i18n-utils';
 import { validateFileSize } from '@/lib/utils';
 import { usePeriod } from '@/contexts/PeriodContext';
