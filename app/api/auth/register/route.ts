@@ -50,12 +50,12 @@ export async function POST(request: Request) {
       .eq('email', email)
       .maybeSingle();
 
-    let targetRol = 'Beklemede';
+    let targetRol = (email && (email.endsWith('@harran.edu.tr') || email.includes('harran.edu.tr'))) ? 'OgretimElemani' : 'Beklemede';
     let targetAdSoyad = ad_soyad;
 
     if (existingProfile) {
       // Eğer profil tetikleyici (trigger) tarafından milisaniyeler önce oluşturulduysa
-      // bu yeni bir kayıttır ve rolü Beklemede olmalıdır.
+      // bu yeni bir kayıttır ve rolü Beklemede (veya Harran için OgretimElemani) olmalıdır.
       // Eğer profil daha önceden oluşturulmuşsa (örneğin 15 saniyeden daha eski),
       // o zaman yöneticinin verdiği rolü (BirimSorumlusu, Yonetici vb.) koruruz.
       const now = new Date();
@@ -65,8 +65,6 @@ export async function POST(request: Request) {
       if (diffInSeconds > 15) {
         targetRol = existingProfile.rol || 'BirimSorumlusu';
         targetAdSoyad = existingProfile.ad_soyad || ad_soyad;
-      } else {
-        targetRol = 'Beklemede';
       }
     }
 
