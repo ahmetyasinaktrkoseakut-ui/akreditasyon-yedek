@@ -621,3 +621,12 @@ ON CONFLICT (kod) DO UPDATE SET
 -- 3. İlk yönetici kullanıcı kaydolduktan sonra Supabase Dashboard -> Table Editor -> profiller
 --    tablosuna girerek o kullanıcının 'rol' değerini 'Yonetici' yapınız.
 -- ==============================================================================
+
+-- EKSİK KOLONLARI TEK SEFERDE GÜVENLE EKLEME ALTER TABLOSU
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS kanitlar JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS olusturulma_tarihi TIMESTAMPTZ DEFAULT timezone('utc'::text, now());
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS onay_durumu TEXT DEFAULT 'bekliyor';
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS red_nedeni TEXT;
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS yonetici_anket_analizi TEXT;
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS birim_anket_degerlendirmesi TEXT;
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS icerik_en TEXT;
