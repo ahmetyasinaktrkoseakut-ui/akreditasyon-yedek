@@ -630,3 +630,30 @@ ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS red_nedeni
 ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS yonetici_anket_analizi TEXT;
 ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS birim_anket_degerlendirmesi TEXT;
 ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS icerik_en TEXT;
+
+-- =========================================================================
+-- %100 TAM UYUM İÇİN EK TEKNİK KOLONLARI OTOMATİK EKLEME KODLARI (ALTER TABLE)
+-- =========================================================================
+ALTER TABLE public.profiller ADD COLUMN IF NOT EXISTS son_giris_tarihi TIMESTAMPTZ;
+ALTER TABLE public.profiller ADD COLUMN IF NOT EXISTS birim_id INT;
+
+ALTER TABLE public.ana_basliklar ADD COLUMN IF NOT EXISTS sira INT DEFAULT 0;
+
+ALTER TABLE public.alt_olcutler ADD COLUMN IF NOT EXISTS rehber_metin TEXT;
+ALTER TABLE public.alt_olcutler ADD COLUMN IF NOT EXISTS rehber_metin_en TEXT;
+
+ALTER TABLE public.ders_izlenceleri ADD COLUMN IF NOT EXISTS ders_kodu TEXT;
+ALTER TABLE public.ders_izlenceleri ADD COLUMN IF NOT EXISTS ogrenme_ciktilari JSONB;
+ALTER TABLE public.ders_izlenceleri ADD COLUMN IF NOT EXISTS haftalik_konular JSONB;
+ALTER TABLE public.ders_izlenceleri ADD COLUMN IF NOT EXISTS degerlendirme_sistemi JSONB;
+ALTER TABLE public.ders_izlenceleri ADD COLUMN IF NOT EXISTS akts_is_yuku JSONB;
+ALTER TABLE public.ders_izlenceleri ADD COLUMN IF NOT EXISTS ders_kaynaklari JSONB;
+ALTER TABLE public.ders_izlenceleri ADD COLUMN IF NOT EXISTS guncellenme_tarihi TIMESTAMPTZ DEFAULT NOW();
+
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS kanitlar JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS olusturulma_tarihi TIMESTAMPTZ DEFAULT timezone('utc'::text, now());
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS onay_durumu TEXT DEFAULT 'bekliyor';
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS red_nedeni TEXT;
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS yonetici_anket_analizi TEXT;
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS birim_anket_degerlendirmesi TEXT;
+ALTER TABLE public.ozdegerlendirme_raporlari ADD COLUMN IF NOT EXISTS icerik_en TEXT;
