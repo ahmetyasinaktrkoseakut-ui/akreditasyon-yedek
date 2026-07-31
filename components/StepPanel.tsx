@@ -6,6 +6,7 @@ import { CheckCircle2, FileText, CalendarDays, Settings, Search, TrendingUp, Fil
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { usePeriod } from '@/contexts/PeriodContext';
+import { getAssignedLetter } from '@/lib/utils';
 
 interface Step {
   id: string; // The puko_asamasi or step id
@@ -105,6 +106,38 @@ export default function StepPanel({ activeStepId, altOlcutId }: { activeStepId: 
   useEffect(() => {
     async function fetchProgresses() {
       try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase.from('profiller').select('rol').eq('id', user.id).maybeSingle();
+          const role = profile?.rol?.toLowerCase() || '';
+          const isAdminOrObserver = role.includes('yonetici') || role.includes('yönetici') || role.includes('admin') || role.includes('gözlemci') || role.includes('gozlemci');
+
+          if (!isAdminOrObserver) {
+            const { count: assignmentCount } = await supabase
+              .from('kullanici_olcut_atamalari')
+              .select('*', { count: 'exact', head: true })
+              .eq('user_id', user.id)
+              .eq('alt_olcut_id', altOlcutId);
+
+            let isAuthorized = (assignmentCount || 0) > 0;
+
+            if (!isAuthorized) {
+              const { data: currentOlcut } = await supabase.from('alt_olcutler').select('kod').eq('id', altOlcutId).maybeSingle();
+              if (currentOlcut?.kod) {
+                const { data: coordData } = await supabase.from('baslik_koordinatorleri').select('baslik').eq('kullanici_id', user.id);
+                const assignedLetter = getAssignedLetter(coordData?.[0]?.baslik);
+                if (assignedLetter && currentOlcut.kod.startsWith(assignedLetter)) {
+                  isAuthorized = true;
+                }
+              }
+            }
+
+            if (!isAuthorized) {
+              return; // Stop fetching any data if not authorized
+            }
+          }
+        }
+
         // PUKO verilerini çek (1-6. adımlar için)
         const { data: pukoData } = await supabase
           .from('puko_degerlendirmeleri')
