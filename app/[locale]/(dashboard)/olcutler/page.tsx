@@ -49,9 +49,11 @@ export default function OlcutlerPage() {
 
         const hasCoordinatorRecord = coordData && coordData.length > 0;
 
+        let finalOlcutler: any[] = [];
+
         if (isAdmin) {
           const { data } = await supabase.from('alt_olcutler').select('*').order('id', { ascending: true });
-          setOlcutler(data || []);
+          finalOlcutler = data || [];
         } else if (hasCoordinatorRecord) {
           // KOORDİNATÖR AKIŞI (Rol 'BirimSorumlusu' olsa bile buraya girecek)
           const assignedLetter = getAssignedLetter(coordData[0]?.baslik);
@@ -62,8 +64,7 @@ export default function OlcutlerPage() {
           } else {
             const { data: allAlt } = await supabase.from('alt_olcutler').select('*').order('id', { ascending: true });
             if (allAlt) {
-              const finalFiltered = allAlt.filter(o => o.kod && o.kod.startsWith(assignedLetter));
-              setOlcutler(finalFiltered);
+              finalOlcutler = allAlt.filter(o => o.kod && o.kod.startsWith(assignedLetter));
               setOpenGroups({ [assignedLetter]: true });
             }
           }
@@ -74,11 +75,20 @@ export default function OlcutlerPage() {
             .select('alt_olcutler(*)')
             .eq('user_id', user.id)
             .eq('donem_id', selectedPeriod.id);
-          if (data) setOlcutler(data.map((i: any) => i.alt_olcutler).filter(Boolean));
+          if (data) {
+            finalOlcutler = data.map((i: any) => i.alt_olcutler).filter(Boolean);
+          }
         }
-        
-        const { data: baslikData } = await supabase.from('ana_basliklar').select('*');
-        if (baslikData) setAnaBasliklar(baslikData);
+
+        setOlcutler(finalOlcutler);
+
+        if (finalOlcutler.length > 0) {
+          const assignedLetters = Array.from(new Set(finalOlcutler.map((o: any) => o.kod?.charAt(0)).filter(Boolean)));
+          if (assignedLetters.length > 0) {
+            const { data: baslikData } = await supabase.from('ana_basliklar').select('*').in('kod', assignedLetters);
+            if (baslikData) setAnaBasliklar(baslikData);
+          }
+        }
       } catch (err) {
         console.error(err);
       } finally {
