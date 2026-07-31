@@ -70,7 +70,7 @@ export default function IzlemePage() {
           pukoData.forEach(row => {
             if (row.durum === 'Onaylandı') onaylanan++;
             else if (row.durum === 'Reddedildi') reddedilen++;
-            else bekleyen++;
+            else if (row.durum === 'Beklemede') bekleyen++;
 
             if (row.kanit_dosyalari && Array.isArray(row.kanit_dosyalari)) {
               toplamDokuman += row.kanit_dosyalari.length;
