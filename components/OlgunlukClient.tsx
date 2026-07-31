@@ -46,7 +46,6 @@ export default function OlgunlukClient({ params }: OlgunlukClientProps) {
         }
 
         if (!isAdminOrObserver) {
-          const { data: currentOlcut } = await supabase.from('alt_olcutler').select('kod').eq('id', resolvedParams.id).maybeSingle();
           const { count: assignmentCount } = await supabase
             .from('kullanici_olcut_atamalari')
             .select('*', { count: 'exact', head: true })
@@ -55,11 +54,14 @@ export default function OlgunlukClient({ params }: OlgunlukClientProps) {
 
           let isAuthorized = (assignmentCount || 0) > 0;
 
-          if (!isAuthorized && currentOlcut?.kod) {
-            const { data: coordData } = await supabase.from('baslik_koordinatorleri').select('baslik').eq('kullanici_id', user.id);
-            const assignedLetter = getAssignedLetter(coordData?.[0]?.baslik);
-            if (assignedLetter && currentOlcut.kod.startsWith(assignedLetter)) {
-              isAuthorized = true;
+          if (!isAuthorized) {
+            const { data: currentOlcut } = await supabase.from('alt_olcutler').select('kod').eq('id', resolvedParams.id).maybeSingle();
+            if (currentOlcut?.kod) {
+              const { data: coordData } = await supabase.from('baslik_koordinatorleri').select('baslik').eq('kullanici_id', user.id);
+              const assignedLetter = getAssignedLetter(coordData?.[0]?.baslik);
+              if (assignedLetter && currentOlcut.kod.startsWith(assignedLetter)) {
+                isAuthorized = true;
+              }
             }
           }
 
