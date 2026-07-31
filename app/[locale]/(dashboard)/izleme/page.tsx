@@ -49,7 +49,7 @@ export default function IzlemePage() {
         
         const { data: pukoData } = await supabase
           .from('puko_degerlendirmeleri')
-          .select('durum, puko_asamasi, kanit_dosyalari, olgunluk_puani, alt_olcutler(kod)')
+          .select('alt_olcut_id, durum, puko_asamasi, kanit_dosyalari, olgunluk_puani, alt_olcutler(kod)')
           .eq('donem_id', selectedPeriod.id);
 
         let bekleyen = 0;
@@ -66,11 +66,20 @@ export default function IzlemePage() {
         const radarSumsAll: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
         const radarCountsAll: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
 
+        // Group statuses by unique alt_olcut_id
+        const olcutStatusMap: Record<string, Set<string>> = {};
+
         if (pukoData) {
           pukoData.forEach(row => {
-            if (row.durum === 'Onaylandı') onaylanan++;
-            else if (row.durum === 'Reddedildi') reddedilen++;
-            else if (row.durum === 'Beklemede') bekleyen++;
+            const olcutId = (row as any).alt_olcut_id;
+            if (olcutId) {
+              if (!olcutStatusMap[olcutId]) {
+                olcutStatusMap[olcutId] = new Set();
+              }
+              if (row.durum) {
+                olcutStatusMap[olcutId].add(row.durum);
+              }
+            }
 
             if (row.kanit_dosyalari && Array.isArray(row.kanit_dosyalari)) {
               toplamDokuman += row.kanit_dosyalari.length;
@@ -99,6 +108,17 @@ export default function IzlemePage() {
                   }
                 }
               }
+            }
+          });
+
+          // Calculate unique criterion status counts
+          Object.values(olcutStatusMap).forEach(statusSet => {
+            if (statusSet.has('Beklemede')) {
+              bekleyen++;
+            } else if (statusSet.has('Reddedildi')) {
+              reddedilen++;
+            } else if (statusSet.has('Onaylandı')) {
+              onaylanan++;
             }
           });
         }
