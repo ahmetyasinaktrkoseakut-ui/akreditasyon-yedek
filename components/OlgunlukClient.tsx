@@ -7,8 +7,10 @@ import StepPanel from '@/components/StepPanel';
 import { logAction } from '@/lib/logger';
 import RichTextEditor from '@/components/RichTextEditor';
 import { useTranslations, useLocale } from 'next-intl';
+import { useRouter } from '@/i18n/routing';
 import { getLocalizedField } from '@/lib/i18n-utils';
 import { usePeriod } from '@/contexts/PeriodContext';
+import { getAssignedLetter } from '@/lib/utils';
 
 interface OlgunlukClientProps {
   params: Promise<{ id: string }>;
@@ -23,6 +25,7 @@ export default function OlgunlukClient({ params }: OlgunlukClientProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [isReadOnly, setIsReadOnly] = useState(false);
   const locale = useLocale();
+  const router = useRouter();
   const t = useTranslations('Maturity');
   const tPhase = useTranslations('Phase');
   const tCommon = useTranslations('Common');
@@ -36,8 +39,34 @@ export default function OlgunlukClient({ params }: OlgunlukClientProps) {
       if (user) {
         const { data: profile } = await supabase.from('profiller').select('rol').eq('id', user.id).maybeSingle();
         const role = profile?.rol?.toLowerCase() || '';
-        if (role.includes('yonetici') || role.includes('yönetici') || role.includes('admin') || role.includes('gözlemci') || role.includes('gozlemci') || selectedPeriod?.is_active === false) {
+        const isAdminOrObserver = role.includes('yonetici') || role.includes('yönetici') || role.includes('admin') || role.includes('gözlemci') || role.includes('gozlemci');
+
+        if (isAdminOrObserver || selectedPeriod?.is_active === false) {
           setIsReadOnly(true);
+        }
+
+        if (!isAdminOrObserver) {
+          const { data: currentOlcut } = await supabase.from('alt_olcutler').select('kod').eq('id', resolvedParams.id).maybeSingle();
+          const { count: assignmentCount } = await supabase
+            .from('kullanici_olcut_atamalari')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .eq('alt_olcut_id', resolvedParams.id);
+
+          let isAuthorized = (assignmentCount || 0) > 0;
+
+          if (!isAuthorized && currentOlcut?.kod) {
+            const { data: coordData } = await supabase.from('baslik_koordinatorleri').select('baslik').eq('kullanici_id', user.id);
+            const assignedLetter = getAssignedLetter(coordData?.[0]?.baslik);
+            if (assignedLetter && currentOlcut.kod.startsWith(assignedLetter)) {
+              isAuthorized = true;
+            }
+          }
+
+          if (!isAuthorized) {
+            router.replace('/olcutler');
+            return;
+          }
         }
       }
       

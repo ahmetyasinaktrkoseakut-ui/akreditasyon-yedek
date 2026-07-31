@@ -5,11 +5,12 @@ import { supabase } from '@/lib/supabase/client';
 import { Loader2, Info, FileSignature, FileText, CheckCircle2, FileSearch, Download, Save, Plus, Link as LinkIcon } from 'lucide-react';
 import StepPanel from '@/components/StepPanel';
 import { useTranslations, useLocale } from 'next-intl';
+import { useRouter } from '@/i18n/routing';
 import { getLocalizedField } from '@/lib/i18n-utils';
-import { validateFileSize } from '@/lib/utils';
 import { usePeriod } from '@/contexts/PeriodContext';
 import RichTextEditor, { RichTextEditorRef } from '@/components/RichTextEditor';
 import { logAction } from '@/lib/logger';
+import { validateFileSize, getAssignedLetter } from '@/lib/utils';
 
 interface OzdegerlendirmeRaporuClientProps {
   params: Promise<{ id: string }>;
@@ -47,6 +48,7 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
   const t = useTranslations('SelfEvaluation');
   const tPhase = useTranslations('Phase');
   const locale = useLocale();
+  const router = useRouter();
   const { selectedPeriod } = usePeriod();
   const editorRef = useRef<RichTextEditorRef>(null);
   const editorEnRef = useRef<RichTextEditorRef>(null);
@@ -69,6 +71,30 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
         // Adminlerin de düzenleme yapabilmesi için ReadOnly kısıtlamasını esnetiyoruz, gözlemci ise kilitle
         if (selectedPeriod?.is_active === false || localUserIsObserver) {
           setIsReadOnly(true);
+        }
+
+        if (!localUserIsAdmin && !localUserIsObserver) {
+          const { data: currentOlcut } = await supabase.from('alt_olcutler').select('kod').eq('id', resolvedParams.id).maybeSingle();
+          const { count: assignmentCount } = await supabase
+            .from('kullanici_olcut_atamalari')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .eq('alt_olcut_id', resolvedParams.id);
+
+          let isAuthorized = (assignmentCount || 0) > 0;
+
+          if (!isAuthorized && currentOlcut?.kod) {
+            const { data: coordData } = await supabase.from('baslik_koordinatorleri').select('baslik').eq('kullanici_id', user.id);
+            const assignedLetter = getAssignedLetter(coordData?.[0]?.baslik);
+            if (assignedLetter && currentOlcut.kod.startsWith(assignedLetter)) {
+              isAuthorized = true;
+            }
+          }
+
+          if (!isAuthorized) {
+            router.replace('/olcutler');
+            return;
+          }
         }
       }
 

@@ -4,11 +4,12 @@ import { useState, useEffect, use } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { Loader2, Plus, Info, Save, Link as LinkIcon, Settings, CalendarDays, ExternalLink, Trash2 } from 'lucide-react';
 import { useTranslations, useLocale } from 'next-intl';
+import { useRouter } from '@/i18n/routing';
 import { logAction } from '@/lib/logger';
 import StepPanel from '@/components/StepPanel';
 import RichTextEditor from '@/components/RichTextEditor';
 import { getLocalizedField } from '@/lib/i18n-utils';
-import { validateFileSize } from '@/lib/utils';
+import { validateFileSize, getAssignedLetter } from '@/lib/utils';
 import { usePeriod } from '@/contexts/PeriodContext';
 
 interface Eylem {
@@ -46,6 +47,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
   const t = useTranslations('Phase');
   const tStepPanel = useTranslations('StepPanel');
   const locale = useLocale();
+  const router = useRouter();
   const { selectedPeriod } = usePeriod();
   
   // Onay / Ret Sistematiği
@@ -61,8 +63,34 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       if (user) {
         const { data: profile } = await supabase.from('profiller').select('rol').eq('id', user.id).maybeSingle();
         const role = profile?.rol?.toLowerCase() || '';
-        if (role.includes('yonetici') || role.includes('yönetici') || role.includes('admin') || role.includes('gözlemci') || role.includes('gozlemci') || selectedPeriod?.is_active === false || selectedPeriod?.is_sealed === true) {
+        const isAdminOrObserver = role.includes('yonetici') || role.includes('yönetici') || role.includes('admin') || role.includes('gözlemci') || role.includes('gozlemci');
+        
+        if (isAdminOrObserver || selectedPeriod?.is_active === false || selectedPeriod?.is_sealed === true) {
           setIsReadOnly(true);
+        }
+
+        if (!isAdminOrObserver) {
+          const { data: currentOlcut } = await supabase.from('alt_olcutler').select('kod').eq('id', resolvedParams.id).maybeSingle();
+          const { count: assignmentCount } = await supabase
+            .from('kullanici_olcut_atamalari')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .eq('alt_olcut_id', resolvedParams.id);
+
+          let isAuthorized = (assignmentCount || 0) > 0;
+
+          if (!isAuthorized && currentOlcut?.kod) {
+            const { data: coordData } = await supabase.from('baslik_koordinatorleri').select('baslik').eq('kullanici_id', user.id);
+            const assignedLetter = getAssignedLetter(coordData?.[0]?.baslik);
+            if (assignedLetter && currentOlcut.kod.startsWith(assignedLetter)) {
+              isAuthorized = true;
+            }
+          }
+
+          if (!isAuthorized) {
+            router.replace('/olcutler');
+            return;
+          }
         }
       }
       
