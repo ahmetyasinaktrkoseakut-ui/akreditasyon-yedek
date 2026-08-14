@@ -123,7 +123,7 @@ export default function EvidenceAnnotatorModal({
     return currentY + lineHeight;
   };
 
-  // Render Image, PDF Page, or Real Word Text onto Canvas
+  // Render Image, PDF Page, or Real Word Text onto Canvas with NATIVE ASPECT RATIO
   const renderDocumentToCanvas = async () => {
     if (!isOpen || !doc?.url || !canvasRef.current) return;
     const canvas = canvasRef.current;
@@ -138,10 +138,9 @@ export default function EvidenceAnnotatorModal({
         img.crossOrigin = 'anonymous';
         img.src = doc.url;
         img.onload = () => {
-          const targetW = 800;
-          const scale = img.width > targetW ? targetW / img.width : 1;
-          canvas.width = Math.round(img.width * scale);
-          canvas.height = Math.round(img.height * scale);
+          // Native Image Dimensions -> Zero Distortion!
+          canvas.width = img.naturalWidth || img.width;
+          canvas.height = img.naturalHeight || img.height;
 
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           const initialState = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -157,10 +156,8 @@ export default function EvidenceAnnotatorModal({
         const pageToRender = Math.min(Math.max(1, currentPage), pdf.numPages);
         const page = await pdf.getPage(pageToRender);
         
-        const targetWidth = 800;
-        const unscaledViewport = page.getViewport({ scale: 1 });
-        const scale = targetWidth / unscaledViewport.width;
-        const viewport = page.getViewport({ scale });
+        // Render PDF at Crisp Native 1.5x Scale -> Zero Distortion!
+        const viewport = page.getViewport({ scale: 1.5 });
 
         canvas.width = Math.round(viewport.width);
         canvas.height = Math.round(viewport.height);
@@ -175,7 +172,7 @@ export default function EvidenceAnnotatorModal({
         setHistory([initialState]);
         setRenderingDoc(false);
       } else if (isOfficeDoc) {
-        // Parse Real Word Document Text using JSZip & DOMParser
+        // Word Document: Native A4 Ratio Paper Canvas (800x1100)
         let extractedParagraphs: string[] = [];
 
         if (zipLibLoaded && (window as any).JSZip) {
@@ -198,10 +195,8 @@ export default function EvidenceAnnotatorModal({
           }
         }
 
-        // Dynamically compute canvas height based on paragraph count so full document fits
-        const estimatedHeight = Math.max(800, 100 + (extractedParagraphs.length * 45));
         canvas.width = 800;
-        canvas.height = estimatedHeight;
+        canvas.height = Math.max(1100, 120 + (extractedParagraphs.length * 45));
 
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -214,7 +209,7 @@ export default function EvidenceAnnotatorModal({
         ctx.font = 'bold 15px sans-serif';
         ctx.fillText(`📄 Word Metin Belgesi: ${doc.name}`, 20, 31);
 
-        // Render extracted Word text paragraphs on A4 Paper Canvas
+        // Render extracted Word text paragraphs
         let yPos = 80;
         ctx.fillStyle = '#0f172a';
         ctx.font = 'bold 16px sans-serif';
@@ -262,7 +257,7 @@ export default function EvidenceAnnotatorModal({
 
   if (!isOpen || !doc) return null;
 
-  // Exact Mouse Position Mapping without letterbox offset
+  // Exact Mouse Position Mapping without letterbox distortion
   const getCanvasPos = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const canvas = canvasRef.current;
@@ -567,7 +562,7 @@ export default function EvidenceAnnotatorModal({
           )}
         </div>
 
-        {/* Modal Body - Smooth Scrollable Container so Full Document is Accessible */}
+        {/* Modal Body - Smooth Scrollable Container */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-100">
           
           {/* Note Input */}
@@ -585,13 +580,13 @@ export default function EvidenceAnnotatorModal({
             />
           </div>
 
-          {/* MAIN INTERACTIVE CANVAS PREVIEW AREA WITH NATURAL SCROLLING */}
+          {/* MAIN INTERACTIVE CANVAS PREVIEW AREA WITH NATURAL ASPECT RATIO */}
           <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm">
             <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b pb-1.5">
               <span className="flex items-center gap-1.5">
                 <Pencil className="w-3.5 h-3.5 text-amber-600" />
                 {isPdf 
-                  ? `PDF Sayfa ${currentPage} Çizim Tuvali (Fareyle üzerine çizebilirsiniz):` 
+                  ? `PDF Sayfa ${currentPage} Çizim Tuvali:` 
                   : isOfficeDoc 
                   ? 'Word / Doküman Çizim & İşaretleme Tuvali:' 
                   : 'Görsel Çizim & İşaretleme Tuvali:'}
@@ -603,14 +598,15 @@ export default function EvidenceAnnotatorModal({
               )}
             </div>
 
-            {/* Scrollable Canvas Display Container */}
+            {/* Scrollable Canvas Display Container with Crisp Native Aspect Ratio */}
             <div className="overflow-y-auto overflow-x-hidden flex justify-center bg-slate-900/10 rounded-lg p-3 max-h-[62vh]">
               <canvas
                 ref={canvasRef}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
-                className="cursor-crosshair border border-slate-300 shadow-md rounded bg-white max-w-full block"
+                className="cursor-crosshair border border-slate-300 shadow-md rounded bg-white block"
+                style={{ width: '100%', height: 'auto', maxWidth: '100%' }}
               />
             </div>
           </div>
