@@ -389,15 +389,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
         size: Math.round(file.size / 1024)
       };
 
-      setDokumanlar(prev => {
-        const nextDocs = [...prev, newDoc];
-        // Automatically pop up Evidence Annotator Modal for newly uploaded doc
-        setTimeout(() => {
-          setSelectedDocForAnnotation({ doc: newDoc, index: nextDocs.length - 1 });
-          setAnnotatorModalOpen(true);
-        }, 100);
-        return nextDocs;
-      });
+      setDokumanlar(prev => [...prev, newDoc]);
 
     } catch (error: any) {
       console.error('File upload error:', error);

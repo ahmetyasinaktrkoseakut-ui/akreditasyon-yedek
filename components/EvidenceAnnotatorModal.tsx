@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Loader2, X, Highlighter, Pencil, Trash2, Check, RefreshCw, Eye, FileText, Image as ImageIcon, Sparkles, Square, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, X, Highlighter, Pencil, Trash2, Check, RefreshCw, Eye, FileText, Image as ImageIcon, Sparkles, Square, RotateCcw, ChevronLeft, ChevronRight, Palette } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 
 interface EvidenceDoc {
@@ -35,6 +35,11 @@ export default function EvidenceAnnotatorModal({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [selectedTool, setSelectedTool] = useState<'highlighter' | 'box'>('highlighter');
+
+  // Pen Size & Color Options
+  const [penColor, setPenColor] = useState<string>('rgba(250, 204, 21, 0.45)'); // Yellow
+  const [penSize, setPenSize] = useState<number>(24); // Medium 24px
+
   const [isSaving, setIsSaving] = useState(false);
   const [replacingFile, setReplacingFile] = useState(false);
   const [replacementFile, setReplacementFile] = useState<File | null>(null);
@@ -81,7 +86,7 @@ export default function EvidenceAnnotatorModal({
     }
   }, [doc]);
 
-  // Render Image or PDF Page onto Canvas
+  // Render Image, PDF Page, or Word Card onto Canvas
   const renderDocumentToCanvas = async () => {
     if (!isOpen || !doc?.url || !canvasRef.current) return;
     const canvas = canvasRef.current;
@@ -93,7 +98,7 @@ export default function EvidenceAnnotatorModal({
       img.crossOrigin = 'anonymous';
       img.src = doc.url;
       img.onload = () => {
-        const maxWidth = 1000;
+        const maxWidth = 950;
         const scale = img.width > maxWidth ? maxWidth / img.width : 1;
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
@@ -112,7 +117,12 @@ export default function EvidenceAnnotatorModal({
 
         const pageToRender = Math.min(Math.max(1, currentPage), pdf.numPages);
         const page = await pdf.getPage(pageToRender);
-        const viewport = page.getViewport({ scale: 1.5 });
+        
+        // Target container width ~850px for neat responsive layout
+        const targetWidth = 850;
+        const unscaledViewport = page.getViewport({ scale: 1 });
+        const scale = targetWidth / unscaledViewport.width;
+        const viewport = page.getViewport({ scale });
 
         canvas.width = viewport.width;
         canvas.height = viewport.height;
@@ -130,6 +140,44 @@ export default function EvidenceAnnotatorModal({
       } finally {
         setRenderingPdfPage(false);
       }
+    } else if (isOfficeDoc) {
+      // Word / Office Document Canvas Layout Card (Enables Drawing on Word Docs!)
+      canvas.width = 850;
+      canvas.height = 600;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Card Header Banner
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, canvas.width, 70);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText('📝 Word Kanıt Belgesi Çizim & İşaretleme Alanı', 30, 42);
+
+      // Document Info
+      ctx.fillStyle = '#334155';
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText(`Dosya: ${doc.name}`, 40, 120);
+
+      ctx.fillStyle = '#64748b';
+      ctx.font = '14px sans-serif';
+      ctx.fillText(`Boyut: ${doc.size ? `${doc.size} KB` : 'Belirtilmedi'}`, 40, 150);
+
+      // Text placeholder area
+      ctx.fillStyle = '#f8fafc';
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(40, 180, canvas.width - 80, 370);
+      ctx.fillRect(40, 180, canvas.width - 80, 370);
+
+      ctx.fillStyle = '#475569';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText('İlgili Word kanıt paragrafını aşağıdaki boşluğa işaretlemek için üstteki kalemi kullanın:', 60, 220);
+
+      const initialState = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      setHistory([initialState]);
     }
   };
 
@@ -169,13 +217,13 @@ export default function EvidenceAnnotatorModal({
     const currentPos = getCanvasPos(e);
 
     if (selectedTool === 'highlighter') {
-      // Smooth Freehand Yellow Highlighter Brush Stroke
+      // Freehand Highlighter Brush Stroke with selected Color & Size
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(lastPos.x, lastPos.y);
       ctx.lineTo(currentPos.x, currentPos.y);
-      ctx.strokeStyle = 'rgba(250, 204, 21, 0.45)'; // Bright semi-transparent yellow
-      ctx.lineWidth = 24;
+      ctx.strokeStyle = penColor;
+      ctx.lineWidth = penSize;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.stroke();
@@ -241,8 +289,8 @@ export default function EvidenceAnnotatorModal({
         const { data: publicUrlData } = supabase.storage.from('dokumanlar').getPublicUrl(newFileName);
         finalUrl = publicUrlData.publicUrl;
       } 
-      // 2. Export canvas (Image or PDF page drawing)
-      else if ((isImage || isPdf) && canvasRef.current && history.length > 1) {
+      // 2. Export canvas drawing for PDF/Image/Word
+      else if ((isImage || isPdf || isOfficeDoc) && canvasRef.current && history.length > 1) {
         const canvas = canvasRef.current;
         const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
         
@@ -285,8 +333,6 @@ export default function EvidenceAnnotatorModal({
     }
   };
 
-  const officePreviewUrl = isOfficeDoc ? `https://docs.google.com/viewer?url=${encodeURIComponent(doc.url)}&embedded=true` : '';
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-3 overflow-y-auto animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[96vh] flex flex-col overflow-hidden">
@@ -314,9 +360,9 @@ export default function EvidenceAnnotatorModal({
         {/* TOP DRAWING & NAVIGATION TOOLBAR */}
         <div className="px-6 py-3 bg-slate-800 text-white flex flex-wrap items-center justify-between gap-3 border-b border-slate-700">
           
-          {/* Drawing Tools */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-300 uppercase mr-1">Çizim Araçları:</span>
+          {/* Drawing Tools & Size/Color Selectors */}
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-bold text-slate-300 uppercase">Araçlar:</span>
             {!isReadOnly && (
               <>
                 <button
@@ -325,16 +371,77 @@ export default function EvidenceAnnotatorModal({
                   className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 ${selectedTool === 'highlighter' ? 'bg-yellow-400 text-slate-950 shadow-md' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'}`}
                 >
                   <Highlighter className="w-4 h-4" />
-                  ✏️ Fosforlu Kalem
+                  Fosforlu Kalem
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setSelectedTool('box')}
                   className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 ${selectedTool === 'box' ? 'bg-red-600 text-white shadow-md' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'}`}
                 >
                   <Square className="w-4 h-4" />
-                  🔲 Kırmızı Kutucuk
+                  Kırmızı Kutucuk
                 </button>
+
+                {/* COLOR PICKER (FOR HIGHLIGHTER) */}
+                {selectedTool === 'highlighter' && (
+                  <div className="flex items-center gap-1.5 bg-slate-900/60 px-2.5 py-1 rounded-lg border border-slate-700">
+                    <span className="text-[11px] font-bold text-slate-400">Renk:</span>
+                    <button
+                      type="button"
+                      onClick={() => setPenColor('rgba(250, 204, 21, 0.45)')}
+                      className={`w-5 h-5 rounded-full bg-yellow-400 border-2 ${penColor.includes('250, 204') ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                      title="Sarı"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPenColor('rgba(34, 197, 94, 0.45)')}
+                      className={`w-5 h-5 rounded-full bg-emerald-500 border-2 ${penColor.includes('34, 197') ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                      title="Yeşil"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPenColor('rgba(59, 130, 246, 0.45)')}
+                      className={`w-5 h-5 rounded-full bg-blue-500 border-2 ${penColor.includes('59, 130') ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                      title="Mavi"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPenColor('rgba(244, 63, 94, 0.45)')}
+                      className={`w-5 h-5 rounded-full bg-rose-500 border-2 ${penColor.includes('244, 63') ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                      title="Pembe/Kırmızı"
+                    />
+                  </div>
+                )}
+
+                {/* BRUSH SIZE PICKER */}
+                {selectedTool === 'highlighter' && (
+                  <div className="flex items-center gap-1.5 bg-slate-900/60 px-2.5 py-1 rounded-lg border border-slate-700">
+                    <span className="text-[11px] font-bold text-slate-400">Kalem Boyutu:</span>
+                    <button
+                      type="button"
+                      onClick={() => setPenSize(12)}
+                      className={`px-2 py-0.5 text-xs font-bold rounded ${penSize === 12 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                    >
+                      İnce (12px)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPenSize(24)}
+                      className={`px-2 py-0.5 text-xs font-bold rounded ${penSize === 24 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                    >
+                      Orta (24px)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPenSize(40)}
+                      className={`px-2 py-0.5 text-xs font-bold rounded ${penSize === 40 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                    >
+                      Kalın (40px)
+                    </button>
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={handleUndo}
@@ -393,48 +500,33 @@ export default function EvidenceAnnotatorModal({
           </div>
 
           {/* MAIN INTERACTIVE CANVAS PREVIEW AREA */}
-          {(isImage || isPdf) ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b pb-2">
-                <span className="flex items-center gap-1.5">
-                  <Pencil className="w-4 h-4 text-amber-600" />
-                  {isPdf ? `PDF Sayfa ${currentPage} Çizim Alanı (Fareyi basılı tutarak fosforlu kalemle çizin):` : 'Görsel Çizim & İşaretleme Alanı:'}
+          <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b pb-2">
+              <span className="flex items-center gap-1.5">
+                <Pencil className="w-4 h-4 text-amber-600" />
+                {isPdf 
+                  ? `PDF Sayfa ${currentPage} Çizim Tuvali (Fareyi basılı tutarak fosforlu kalemle çizin):` 
+                  : isOfficeDoc 
+                  ? 'Word / Doküman Çizim & İşaretleme Tuvali:' 
+                  : 'Görsel Çizim & İşaretleme Tuvali:'}
+              </span>
+              {renderingPdfPage && (
+                <span className="text-amber-600 flex items-center gap-1 text-xs">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> PDF Yükleniyor...
                 </span>
-                {renderingPdfPage && (
-                  <span className="text-amber-600 flex items-center gap-1 text-xs">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sayfa Yükleniyor...
-                  </span>
-                )}
-              </div>
+              )}
+            </div>
 
-              <div className="overflow-x-auto flex justify-center bg-slate-900/10 rounded-lg p-2 min-h-[420px] max-h-[550px]">
-                <canvas
-                  ref={canvasRef}
-                  onMouseDown={handleMouseDown}
-                  onMouseMove={handleMouseMove}
-                  onMouseUp={handleMouseUp}
-                  className="cursor-crosshair border border-slate-300 shadow-md rounded max-w-full bg-white"
-                />
-              </div>
+            <div className="overflow-auto flex justify-center bg-slate-900/10 rounded-lg p-2 min-h-[420px] max-h-[580px]">
+              <canvas
+                ref={canvasRef}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                className="cursor-crosshair border border-slate-300 shadow-md rounded max-w-full bg-white object-contain"
+              />
             </div>
-          ) : isOfficeDoc ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b pb-2">
-                <span>Word / Office Belgesi Önizleme:</span>
-              </div>
-              <div className="rounded-xl overflow-hidden border border-slate-200 shadow-inner bg-slate-100 min-h-[450px]">
-                <iframe
-                  src={officePreviewUrl}
-                  className="w-full h-[480px] border-0"
-                  title="Word Canlı Önizleme"
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white border border-slate-200 rounded-xl p-6 text-center text-xs text-slate-500">
-              📄 {doc.name} (Önizleme Desteklenmiyor)
-            </div>
-          )}
+          </div>
 
           {/* DÜZELT / YENİSİYLE DEĞİŞTİR (Replace File Option) */}
           {!isReadOnly && (
