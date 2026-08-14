@@ -46,6 +46,7 @@ export default function EvidenceAnnotatorModal({
 
   // PDF.js & Canvas Drawing State
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [pdfLibLoaded, setPdfLibLoaded] = useState(false);
   const [renderingPdfPage, setRenderingPdfPage] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -98,10 +99,10 @@ export default function EvidenceAnnotatorModal({
       img.crossOrigin = 'anonymous';
       img.src = doc.url;
       img.onload = () => {
-        const maxWidth = 950;
+        const maxWidth = 900;
         const scale = img.width > maxWidth ? maxWidth / img.width : 1;
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
 
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const initialState = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -118,14 +119,13 @@ export default function EvidenceAnnotatorModal({
         const pageToRender = Math.min(Math.max(1, currentPage), pdf.numPages);
         const page = await pdf.getPage(pageToRender);
         
-        // Target container width ~850px for neat responsive layout
         const targetWidth = 850;
         const unscaledViewport = page.getViewport({ scale: 1 });
         const scale = targetWidth / unscaledViewport.width;
         const viewport = page.getViewport({ scale });
 
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
+        canvas.width = Math.round(viewport.width);
+        canvas.height = Math.round(viewport.height);
 
         const renderContext = {
           canvasContext: ctx,
@@ -141,7 +141,7 @@ export default function EvidenceAnnotatorModal({
         setRenderingPdfPage(false);
       }
     } else if (isOfficeDoc) {
-      // Word / Office Document Canvas Layout Card (Enables Drawing on Word Docs!)
+      // Word / Office Document Canvas Layout Card
       canvas.width = 850;
       canvas.height = 600;
 
@@ -189,14 +189,19 @@ export default function EvidenceAnnotatorModal({
 
   if (!isOpen || !doc) return null;
 
-  // Helper for mouse position relative to canvas
+  // Exact Mouse & Touch Position Mapping without letterbox offset
   const getCanvasPos = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
+    
+    // Scale factors between internal canvas resolution and rendered CSS size
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
     return {
-      x: (e.clientX - rect.left) * (canvas.width / rect.width),
-      y: (e.clientY - rect.top) * (canvas.height / rect.height)
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
     };
   };
 
@@ -230,6 +235,18 @@ export default function EvidenceAnnotatorModal({
       ctx.restore();
 
       setLastPos(currentPos);
+    } else if (selectedTool === 'box' && boxStartPos && history.length > 0) {
+      // Live Red Box Preview while dragging mouse
+      const lastSnapshot = history[history.length - 1];
+      ctx.putImageData(lastSnapshot, 0, 0);
+
+      const width = currentPos.x - boxStartPos.x;
+      const height = currentPos.y - boxStartPos.y;
+      ctx.save();
+      ctx.strokeStyle = '#dc2626'; // Bold Red
+      ctx.lineWidth = 4;
+      ctx.strokeRect(boxStartPos.x, boxStartPos.y, width, height);
+      ctx.restore();
     }
   };
 
@@ -241,7 +258,7 @@ export default function EvidenceAnnotatorModal({
     const currentPos = getCanvasPos(e);
 
     if (selectedTool === 'box' && boxStartPos) {
-      // Draw Red Border Highlight Box
+      // Final Red Border Highlight Box
       const width = currentPos.x - boxStartPos.x;
       const height = currentPos.y - boxStartPos.y;
       ctx.save();
@@ -517,13 +534,14 @@ export default function EvidenceAnnotatorModal({
               )}
             </div>
 
-            <div className="overflow-auto flex justify-center bg-slate-900/10 rounded-lg p-2 min-h-[420px] max-h-[580px]">
+            <div ref={containerRef} className="overflow-auto flex justify-center bg-slate-900/10 rounded-lg p-2 min-h-[420px] max-h-[580px]">
               <canvas
                 ref={canvasRef}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
-                className="cursor-crosshair border border-slate-300 shadow-md rounded max-w-full bg-white object-contain"
+                className="cursor-crosshair border border-slate-300 shadow-md rounded bg-white block"
+                style={{ width: '100%', height: 'auto', maxWidth: '100%', display: 'block' }}
               />
             </div>
           </div>
