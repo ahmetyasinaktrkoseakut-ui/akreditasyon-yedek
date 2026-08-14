@@ -123,7 +123,7 @@ export default function EvidenceAnnotatorModal({
     return currentY + lineHeight;
   };
 
-  // Render Image, PDF Page, or Real Word Text onto Canvas with NATIVE ASPECT RATIO
+  // Render Image, PDF Page, or Real Word Text onto Canvas with PURE NATURAL ASPECT RATIO
   const renderDocumentToCanvas = async () => {
     if (!isOpen || !doc?.url || !canvasRef.current) return;
     const canvas = canvasRef.current;
@@ -138,7 +138,7 @@ export default function EvidenceAnnotatorModal({
         img.crossOrigin = 'anonymous';
         img.src = doc.url;
         img.onload = () => {
-          // Native Image Dimensions -> Zero Distortion!
+          // Pure Natural Image Resolution -> Absolute 100% Original Aspect Ratio!
           canvas.width = img.naturalWidth || img.width;
           canvas.height = img.naturalHeight || img.height;
 
@@ -156,7 +156,7 @@ export default function EvidenceAnnotatorModal({
         const pageToRender = Math.min(Math.max(1, currentPage), pdf.numPages);
         const page = await pdf.getPage(pageToRender);
         
-        // Render PDF at Crisp Native 1.5x Scale -> Zero Distortion!
+        // Pure Natural PDF Resolution at 1.5x Scale -> Absolute 100% Original Aspect Ratio!
         const viewport = page.getViewport({ scale: 1.5 });
 
         canvas.width = Math.round(viewport.width);
@@ -172,7 +172,7 @@ export default function EvidenceAnnotatorModal({
         setHistory([initialState]);
         setRenderingDoc(false);
       } else if (isOfficeDoc) {
-        // Word Document: Native A4 Ratio Paper Canvas (800x1100)
+        // Word Document: Standard A4 Portrait Aspect Ratio (800x1130)
         let extractedParagraphs: string[] = [];
 
         if (zipLibLoaded && (window as any).JSZip) {
@@ -196,7 +196,7 @@ export default function EvidenceAnnotatorModal({
         }
 
         canvas.width = 800;
-        canvas.height = Math.max(1100, 120 + (extractedParagraphs.length * 45));
+        canvas.height = Math.max(1130, 120 + (extractedParagraphs.length * 45));
 
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -598,15 +598,15 @@ export default function EvidenceAnnotatorModal({
               )}
             </div>
 
-            {/* Scrollable Canvas Display Container with Crisp Native Aspect Ratio */}
-            <div className="overflow-y-auto overflow-x-hidden flex justify-center bg-slate-900/10 rounded-lg p-3 max-h-[62vh]">
+            {/* Scrollable Canvas Display Container with Pure Natural Resolution & Aspect Ratio */}
+            <div className="overflow-y-auto overflow-x-auto flex justify-center bg-slate-900/10 rounded-lg p-3 max-h-[62vh]">
               <canvas
                 ref={canvasRef}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 className="cursor-crosshair border border-slate-300 shadow-md rounded bg-white block"
-                style={{ width: '100%', height: 'auto', maxWidth: '100%' }}
+                style={{ maxWidth: '100%', height: 'auto', display: 'block', margin: '0 auto' }}
               />
             </div>
           </div>
@@ -670,7 +670,7 @@ export default function EvidenceAnnotatorModal({
               className="inline-flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-md disabled:opacity-60"
             >
               {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-              {isSaving ? 'Kaydediliyor...' : 'İşaretleme & Düzeltmeyi Kaydet'}
+              {isSaving ? 'Kaydedildiği...' : 'İşaretleme & Düzeltmeyi Kaydet'}
             </button>
           )}
         </div>
