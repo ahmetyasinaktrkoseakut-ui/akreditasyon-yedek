@@ -503,11 +503,6 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
                       <p className="text-sm font-medium text-slate-700 truncate" title={doc.name}>{doc.name}</p>
                       <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                         <span className="text-[11px] text-slate-500">{doc.size ? `${doc.size} KB` : t('unknown_size')}</span>
-                        {doc.page_number && (
-                          <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[10px] font-bold rounded">
-                            Sayfa/Bölüm: {doc.page_number}
-                          </span>
-                        )}
                         {doc.is_annotated && (
                           <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded">
                             ✓ İşaretli

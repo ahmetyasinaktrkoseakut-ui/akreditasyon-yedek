@@ -378,34 +378,18 @@ export default function EvidenceAnnotatorModal({
         <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-100">
           
           {/* Note Input */}
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center gap-4">
-            <div className="w-full md:w-1/4">
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                İlgili Sayfa / Bölüm No:
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={totalPages}
-                value={currentPage}
-                onChange={e => setCurrentPage(parseInt(e.target.value, 10) || 1)}
-                disabled={isReadOnly}
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
-              />
-            </div>
-            <div className="w-full md:w-3/4">
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Vurgu / İşaretleme Notu:
-              </label>
-              <input
-                type="text"
-                value={highlightNote}
-                onChange={e => setHighlightNote(e.target.value)}
-                disabled={isReadOnly}
-                placeholder="Örn: Akreditasyon kanıtı 5. sayfadaki 2. paragrafta sarı fosforlu kalemle çizilmiştir."
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
-              />
-            </div>
+          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Vurgu / İşaretleme Açıklama Notu:
+            </label>
+            <input
+              type="text"
+              value={highlightNote}
+              onChange={e => setHighlightNote(e.target.value)}
+              disabled={isReadOnly}
+              placeholder="Örn: Akreditasyon kanıtı sarı fosforlu kalemle çizilmiştir."
+              className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
+            />
           </div>
 
           {/* MAIN INTERACTIVE CANVAS PREVIEW AREA */}
