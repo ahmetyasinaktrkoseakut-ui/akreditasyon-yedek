@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { Loader2, Plus, Info, Save, Link as LinkIcon, Settings, CalendarDays, ExternalLink, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Info, Save, Link as LinkIcon, Settings, CalendarDays, ExternalLink, Trash2, Pencil } from 'lucide-react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
 import { logAction } from '@/lib/logger';
@@ -11,6 +11,7 @@ import RichTextEditor from '@/components/RichTextEditor';
 import { getLocalizedField } from '@/lib/i18n-utils';
 import { validateFileSize, getAssignedLetter } from '@/lib/utils';
 import { usePeriod } from '@/contexts/PeriodContext';
+import EvidenceAnnotatorModal from '@/components/EvidenceAnnotatorModal';
 
 interface Eylem {
   id?: number;
@@ -53,6 +54,27 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
   // Onay / Ret Sistematiği
   const [pukoId, setPukoId] = useState<string | null>(null);
   const [onayDurumu, setOnayDurumu] = useState<string>('');
+
+  // Evidence Annotator Modal State
+  const [annotatorModalOpen, setAnnotatorModalOpen] = useState(false);
+  const [selectedDocForAnnotation, setSelectedDocForAnnotation] = useState<{ doc: any; index: number } | null>(null);
+
+  const handleOpenAnnotator = (index: number) => {
+    setSelectedDocForAnnotation({ doc: dokumanlar[index], index });
+    setAnnotatorModalOpen(true);
+  };
+
+  const handleSaveAnnotatedDoc = (updatedDoc: any, oldUrlToDelete?: string) => {
+    if (selectedDocForAnnotation !== null) {
+      const newDocs = [...dokumanlar];
+      newDocs[selectedDocForAnnotation.index] = updatedDoc;
+      setDokumanlar(newDocs);
+
+      if (oldUrlToDelete) {
+        setDeletedDocs(prev => [...prev, { url: oldUrlToDelete }]);
+      }
+    }
+  };
 
   const fetchData = async () => {
     if (!selectedPeriod) return;
@@ -468,12 +490,36 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
                 </div>
               ) : (
                 dokumanlar.map((doc, idx) => (
-                  <div key={idx} className="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-lg shadow-sm group">
+                  <div key={idx} className="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-lg shadow-sm group relative">
                     <div className="flex-1 overflow-hidden">
                       <p className="text-sm font-medium text-slate-700 truncate" title={doc.name}>{doc.name}</p>
-                      <p className="text-[11px] text-slate-500">{doc.size ? `${doc.size} KB` : t('unknown_size')}</p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                        <span className="text-[11px] text-slate-500">{doc.size ? `${doc.size} KB` : t('unknown_size')}</span>
+                        {doc.page_number && (
+                          <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[10px] font-bold rounded">
+                            Sayfa/Bölüm: {doc.page_number}
+                          </span>
+                        )}
+                        {doc.is_annotated && (
+                          <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded">
+                            ✓ İşaretli
+                          </span>
+                        )}
+                      </div>
+                      {doc.highlight_note && (
+                        <p className="text-[11px] text-amber-700 font-medium italic truncate mt-1" title={doc.highlight_note}>
+                          📌 {doc.highlight_note}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={(e) => { e.preventDefault(); handleOpenAnnotator(idx); }} 
+                        className="p-1.5 bg-amber-50 text-amber-600 rounded flex-shrink-0 hover:bg-amber-100 transition-colors" 
+                        title="İşaretle / Düzelt"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
                       <a href={doc.url} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 rounded flex-shrink-0 hover:bg-blue-100" title="İndir/Gör">
                         <ExternalLink className="w-3.5 h-3.5" />
                       </a>
@@ -656,8 +702,19 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
 
       </div>
     </div>
-      
-      {/* Reject Modal Stage 7'ye taşındı */}
-    </>
-  );
+
+    {/* Evidence Annotator Modal */}
+    <EvidenceAnnotatorModal
+      isOpen={annotatorModalOpen}
+      onClose={() => {
+        setAnnotatorModalOpen(false);
+        setSelectedDocForAnnotation(null);
+      }}
+      doc={selectedDocForAnnotation?.doc || null}
+      docIndex={selectedDocForAnnotation?.index ?? -1}
+      onSaveAnnotatedDoc={handleSaveAnnotatedDoc}
+      isReadOnly={isReadOnly}
+    />
+  </>
+);
 }
