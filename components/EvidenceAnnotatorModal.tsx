@@ -138,7 +138,7 @@ export default function EvidenceAnnotatorModal({
         img.crossOrigin = 'anonymous';
         img.src = doc.url;
         img.onload = () => {
-          const targetW = 780;
+          const targetW = 800;
           const scale = img.width > targetW ? targetW / img.width : 1;
           canvas.width = Math.round(img.width * scale);
           canvas.height = Math.round(img.height * scale);
@@ -157,7 +157,7 @@ export default function EvidenceAnnotatorModal({
         const pageToRender = Math.min(Math.max(1, currentPage), pdf.numPages);
         const page = await pdf.getPage(pageToRender);
         
-        const targetWidth = 780;
+        const targetWidth = 800;
         const unscaledViewport = page.getViewport({ scale: 1 });
         const scale = targetWidth / unscaledViewport.width;
         const viewport = page.getViewport({ scale });
@@ -176,20 +176,6 @@ export default function EvidenceAnnotatorModal({
         setRenderingDoc(false);
       } else if (isOfficeDoc) {
         // Parse Real Word Document Text using JSZip & DOMParser
-        canvas.width = 780;
-        canvas.height = 1000;
-
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Header Paper Banner
-        ctx.fillStyle = '#1e293b';
-        ctx.fillRect(0, 0, canvas.width, 50);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 15px sans-serif';
-        ctx.fillText(`📄 Word Metin Belgesi: ${doc.name}`, 20, 31);
-
         let extractedParagraphs: string[] = [];
 
         if (zipLibLoaded && (window as any).JSZip) {
@@ -212,18 +198,34 @@ export default function EvidenceAnnotatorModal({
           }
         }
 
+        // Dynamically compute canvas height based on paragraph count so full document fits
+        const estimatedHeight = Math.max(800, 100 + (extractedParagraphs.length * 45));
+        canvas.width = 800;
+        canvas.height = estimatedHeight;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Header Paper Banner
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(0, 0, canvas.width, 50);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 15px sans-serif';
+        ctx.fillText(`📄 Word Metin Belgesi: ${doc.name}`, 20, 31);
+
         // Render extracted Word text paragraphs on A4 Paper Canvas
         let yPos = 80;
         ctx.fillStyle = '#0f172a';
         ctx.font = 'bold 16px sans-serif';
-        yPos = wrapText(ctx, doc.name.replace(/\.[^/.]+$/, ''), 40, yPos, 700, 24);
+        yPos = wrapText(ctx, doc.name.replace(/\.[^/.]+$/, ''), 40, yPos, 720, 24);
         yPos += 10;
 
         ctx.strokeStyle = '#e2e8f0';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(40, yPos);
-        ctx.lineTo(740, yPos);
+        ctx.lineTo(760, yPos);
         ctx.stroke();
         yPos += 20;
 
@@ -231,14 +233,13 @@ export default function EvidenceAnnotatorModal({
           ctx.fillStyle = '#334155';
           ctx.font = '13px sans-serif';
           for (const para of extractedParagraphs) {
-            if (yPos > canvas.height - 40) break;
-            yPos = wrapText(ctx, para, 40, yPos, 700, 20);
-            yPos += 8;
+            yPos = wrapText(ctx, para, 40, yPos, 720, 20);
+            yPos += 12;
           }
         } else {
           ctx.fillStyle = '#64748b';
           ctx.font = 'italic 13px sans-serif';
-          yPos = wrapText(ctx, "Word belgesi metinleri yukarıdaki tuval alanına yüklenmiştir. İlgili cümlenin üzerini fosforlu sarı kalemle çizebilir veya kırmızı kutu içerisine alabilirsiniz.", 40, yPos, 700, 20);
+          yPos = wrapText(ctx, "Word belgesi metinleri tuvale işlenmiştir. İlgili metinlerin üzerini yukarıdaki kalemi kullanarak çizebilirsiniz.", 40, yPos, 720, 20);
         }
 
         const initialState = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -420,8 +421,8 @@ export default function EvidenceAnnotatorModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-2 overflow-hidden animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-3 overflow-y-auto animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[95vh] flex flex-col overflow-hidden">
         
         {/* Header */}
         <div className="px-5 py-3 bg-slate-900 text-white flex items-center justify-between flex-shrink-0">
@@ -566,12 +567,12 @@ export default function EvidenceAnnotatorModal({
           )}
         </div>
 
-        {/* Modal Body - Bounded Height without Scrollbars */}
-        <div className="flex-1 overflow-hidden p-4 space-y-3 bg-slate-100 flex flex-col">
+        {/* Modal Body - Smooth Scrollable Container so Full Document is Accessible */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-100">
           
           {/* Note Input */}
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm flex-shrink-0">
-            <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+            <label className="block text-xs font-bold text-slate-700 mb-1">
               Vurgu / İşaretleme Açıklama Notu:
             </label>
             <input
@@ -580,59 +581,59 @@ export default function EvidenceAnnotatorModal({
               onChange={e => setHighlightNote(e.target.value)}
               disabled={isReadOnly}
               placeholder="Örn: Akreditasyon kanıtı sarı fosforlu kalemle çizilmiştir."
-              className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
+              className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
             />
           </div>
 
-          {/* MAIN INTERACTIVE CANVAS PREVIEW AREA */}
-          <div className="bg-white border border-slate-200 rounded-xl p-2 space-y-1 shadow-sm flex-1 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 border-b pb-1 flex-shrink-0">
+          {/* MAIN INTERACTIVE CANVAS PREVIEW AREA WITH NATURAL SCROLLING */}
+          <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b pb-1.5">
               <span className="flex items-center gap-1.5">
                 <Pencil className="w-3.5 h-3.5 text-amber-600" />
                 {isPdf 
-                  ? `PDF Sayfa ${currentPage} Çizim Tuvali:` 
+                  ? `PDF Sayfa ${currentPage} Çizim Tuvali (Fareyle üzerine çizebilirsiniz):` 
                   : isOfficeDoc 
                   ? 'Word / Doküman Çizim & İşaretleme Tuvali:' 
                   : 'Görsel Çizim & İşaretleme Tuvali:'}
               </span>
               {renderingDoc && (
-                <span className="text-amber-600 flex items-center gap-1 text-[10px]">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Yükleniyor...
+                <span className="text-amber-600 flex items-center gap-1 text-[11px]">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Yükleniyor...
                 </span>
               )}
             </div>
 
-            {/* Bounded Canvas Container */}
-            <div className="flex-1 overflow-hidden flex items-center justify-center bg-slate-900/10 rounded-lg p-1 min-h-0">
+            {/* Scrollable Canvas Display Container */}
+            <div className="overflow-y-auto overflow-x-hidden flex justify-center bg-slate-900/10 rounded-lg p-3 max-h-[62vh]">
               <canvas
                 ref={canvasRef}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
-                className="cursor-crosshair border border-slate-300 shadow-md rounded bg-white max-w-full max-h-full block object-contain"
+                className="cursor-crosshair border border-slate-300 shadow-md rounded bg-white max-w-full block"
               />
             </div>
           </div>
 
           {/* DÜZELT / YENİSİYLE DEĞİŞTİR (Replace File Option) */}
           {!isReadOnly && (
-            <div className="bg-white border border-slate-200 rounded-xl p-2.5 space-y-2 shadow-sm flex-shrink-0">
+            <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <RefreshCw className="w-3.5 h-3.5 text-emerald-600" />
                   Kanıtı Düzelt / Yenisiyle Değiştir:
                 </span>
                 <button
                   type="button"
                   onClick={() => setReplacingFile(!replacingFile)}
-                  className="px-2.5 py-1 text-[11px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"
+                  className="px-2.5 py-1 text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"
                 >
                   {replacingFile ? 'İptal Et' : '🔄 Düzeltilmiş Yeni Dosya Seç'}
                 </button>
               </div>
 
               {replacingFile && (
-                <div className="p-2 bg-emerald-50/60 border border-dashed border-emerald-300 rounded-lg space-y-1.5">
+                <div className="p-2.5 bg-emerald-50/60 border border-dashed border-emerald-300 rounded-lg space-y-2">
                   <input
                     type="file"
                     onChange={e => {
@@ -640,10 +641,10 @@ export default function EvidenceAnnotatorModal({
                         setReplacementFile(e.target.files[0]);
                       }
                     }}
-                    className="block w-full text-[11px] text-slate-700 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-[11px] file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer"
+                    className="block w-full text-xs text-slate-700 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer"
                   />
                   {replacementFile && (
-                    <div className="p-1.5 bg-white rounded border border-emerald-200 text-[11px] font-bold text-emerald-800 flex items-center gap-1.5">
+                    <div className="p-1.5 bg-white rounded border border-emerald-200 text-xs font-bold text-emerald-800 flex items-center gap-1.5">
                       <Check className="w-3.5 h-3.5 text-emerald-600" />
                       Seçilen Yeni Dosya: {replacementFile.name} ({Math.round(replacementFile.size / 1024)} KB)
                     </div>
