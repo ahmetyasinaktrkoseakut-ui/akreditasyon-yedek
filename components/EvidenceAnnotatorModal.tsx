@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Loader2, X, Highlighter, Pencil, Trash2, Check, RefreshCw, Eye, FileText, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { Loader2, X, Highlighter, Pencil, Trash2, Check, RefreshCw, Eye, FileText, Image as ImageIcon, Sparkles, Square, RotateCcw } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 
 interface EvidenceDoc {
@@ -32,33 +32,36 @@ export default function EvidenceAnnotatorModal({
   isReadOnly = false,
 }: EvidenceAnnotatorModalProps) {
   const [highlightNote, setHighlightNote] = useState('');
-  const [pageNumber, setPageNumber] = useState<number | string>(1);
-  const [selectedTool, setSelectedTool] = useState<'highlighter' | 'box' | 'text'>('highlighter');
-  const [highlightColor, setHighlightColor] = useState('#fef08a'); // Soft Yellow
+  const [pageNumber, setPageNumber] = useState<number | string>('');
+  const [selectedTool, setSelectedTool] = useState<'highlighter' | 'box'>('highlighter');
   const [isSaving, setIsSaving] = useState(false);
   const [replacingFile, setReplacingFile] = useState(false);
   const [replacementFile, setReplacementFile] = useState<File | null>(null);
 
-  // Canvas for Image Drawing
+  // Canvas State for Freehand Image Drawing
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
+  const [lastPos, setLastPos] = useState<{ x: number; y: number } | null>(null);
+  const [boxStartPos, setBoxStartPos] = useState<{ x: number; y: number } | null>(null);
   const [history, setHistory] = useState<ImageData[]>([]);
 
   const isImage = doc?.name ? /\.(jpg|jpeg|png|webp|gif)$/i.test(doc.name) : false;
   const isPdf = doc?.name ? /\.pdf$/i.test(doc.name) : false;
+  const isOfficeDoc = doc?.name ? /\.(doc|docx|xls|xlsx|ppt|pptx)$/i.test(doc.name) : false;
 
   useEffect(() => {
     if (doc) {
       setHighlightNote(doc.highlight_note || '');
-      setPageNumber(doc.page_number || 1);
+      setPageNumber(doc.page_number || '');
       setReplacementFile(null);
+      setReplacingFile(false);
       setImageLoaded(false);
+      setHistory([]);
     }
   }, [doc]);
 
-  // Load Image onto Canvas when modal opens for image files
+  // Load Image onto Canvas when modal opens
   useEffect(() => {
     if (isOpen && isImage && doc?.url && canvasRef.current) {
       const canvas = canvasRef.current;
@@ -69,13 +72,14 @@ export default function EvidenceAnnotatorModal({
       img.crossOrigin = 'anonymous';
       img.src = doc.url;
       img.onload = () => {
-        canvas.width = img.width > 1200 ? 1200 : img.width;
-        const scale = canvas.width / img.width;
+        const maxWidth = 1000;
+        const scale = img.width > maxWidth ? maxWidth / img.width : 1;
+        canvas.width = img.width * scale;
         canvas.height = img.height * scale;
 
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         setImageLoaded(true);
-        // Save initial state to history
+
         const initialState = ctx.getImageData(0, 0, canvas.width, canvas.height);
         setHistory([initialState]);
       };
@@ -84,51 +88,75 @@ export default function EvidenceAnnotatorModal({
 
   if (!isOpen || !doc) return null;
 
-  // Handle Image Canvas Drawing (Highlighter / Box)
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isReadOnly || !canvasRef.current) return;
+  // Canvas Mouse Coordinates Helper
+  const getCanvasPos = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current) return { x: 0, y: 0 };
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+    return {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height)
+    };
+  };
 
+  // Canvas Freehand Mouse Handlers
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isReadOnly || !canvasRef.current) return;
+    const pos = getCanvasPos(e);
     setIsDrawing(true);
-    setDrawStart({ x, y });
+    setLastPos(pos);
+    setBoxStartPos(pos);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !lastPos || !canvasRef.current) return;
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return;
+
+    const currentPos = getCanvasPos(e);
+
+    if (selectedTool === 'highlighter') {
+      // Freehand Highlighter Brush Stroke (Yellow Marker)
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(lastPos.x, lastPos.y);
+      ctx.lineTo(currentPos.x, currentPos.y);
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.45)'; // Semi-transparent bright yellow
+      ctx.lineWidth = 24;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.restore();
+
+      setLastPos(currentPos);
+    }
   };
 
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !drawStart || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
+    if (!isDrawing || !canvasRef.current) return;
+    const ctx = canvasRef.current.getContext('2d');
     if (!ctx) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const currentX = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const currentY = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const currentPos = getCanvasPos(e);
 
-    const width = currentX - drawStart.x;
-    const height = currentY - drawStart.y;
-
-    if (selectedTool === 'highlighter') {
-      // Draw Yellow Highlighter Bar
-      ctx.save();
-      ctx.fillStyle = 'rgba(250, 204, 21, 0.45)'; // Semi-transparent yellow
-      ctx.fillRect(drawStart.x, drawStart.y, width || 200, height || 40);
-      ctx.restore();
-    } else if (selectedTool === 'box') {
-      // Draw Red Border Highlight Box
+    if (selectedTool === 'box' && boxStartPos) {
+      // Draw Red Border Highlight Rectangle Box
+      const width = currentPos.x - boxStartPos.x;
+      const height = currentPos.y - boxStartPos.y;
       ctx.save();
       ctx.strokeStyle = '#dc2626'; // Bold Red
       ctx.lineWidth = 4;
-      ctx.strokeRect(drawStart.x, drawStart.y, width || 200, height || 100);
+      ctx.strokeRect(boxStartPos.x, boxStartPos.y, width, height);
       ctx.restore();
     }
 
-    // Save state to history
-    const newSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    setHistory(prev => [...prev, newSnapshot]);
+    // Save state snapshot for Undo
+    const snapshot = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+    setHistory(prev => [...prev, snapshot]);
+
     setIsDrawing(false);
-    setDrawStart(null);
+    setLastPos(null);
+    setBoxStartPos(null);
   };
 
   const handleUndo = () => {
@@ -149,12 +177,12 @@ export default function EvidenceAnnotatorModal({
       let finalUrl = doc.url;
       let oldUrlToDelete: string | undefined = undefined;
 
-      // 1. If replacement file is selected (Düzelt / Yeni Dosya Yükle)
+      // 1. If user uploaded a new replacement file ("Düzelt / Yenisiyle Değiştir")
       if (replacementFile) {
         oldUrlToDelete = doc.url; // Mark old file for deletion from Supabase Storage
 
         const fileExt = replacementFile.name.split('.').pop();
-        const newFileName = `annotated_${Date.now()}_${Math.random()}.${fileExt}`;
+        const newFileName = `duzeltilmis_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
         const { error: uploadError } = await supabase.storage.from('dokumanlar').upload(newFileName, replacementFile);
         if (uploadError) throw uploadError;
 
@@ -168,7 +196,8 @@ export default function EvidenceAnnotatorModal({
         
         if (blob) {
           oldUrlToDelete = doc.annotated_url || undefined;
-          const newFileName = `marked_${Date.now()}_${doc.name.replace(/[^a-zA-Z0-9._-]/g, '_')}.png`;
+          const cleanName = doc.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const newFileName = `isaretli_${Date.now()}_${cleanName}.png`;
           const { error: uploadError } = await supabase.storage.from('dokumanlar').upload(newFileName, blob);
           if (!uploadError) {
             const { data: publicUrlData } = supabase.storage.from('dokumanlar').getPublicUrl(newFileName);
@@ -177,7 +206,7 @@ export default function EvidenceAnnotatorModal({
         }
       }
 
-      // Format final target PDF URL with #page=X if PDF
+      // Format final PDF URL with target page number parameter `#page=X`
       let displayUrl = finalUrl;
       if (isPdf && pageNumber) {
         const baseUrl = finalUrl.split('#')[0];
@@ -205,9 +234,12 @@ export default function EvidenceAnnotatorModal({
     }
   };
 
+  const pdfPreviewUrl = isPdf ? `${doc.url.split('#')[0]}${pageNumber ? `#page=${pageNumber}` : ''}` : '';
+  const officePreviewUrl = isOfficeDoc ? `https://docs.google.com/viewer?url=${encodeURIComponent(doc.url)}&embedded=true` : '';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/75 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[95vh] flex flex-col overflow-hidden">
         
         {/* Header */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
@@ -218,11 +250,8 @@ export default function EvidenceAnnotatorModal({
             <div>
               <h3 className="font-bold text-base flex items-center gap-2">
                 Kanıt İşaretleme & Düzenleme Editörü
-                <span className="px-2 py-0.5 text-xs bg-amber-500 text-slate-950 font-bold rounded-full">
-                  Urfa Özel
-                </span>
               </h3>
-              <p className="text-xs text-slate-300 truncate max-w-md" title={doc.name}>
+              <p className="text-xs text-slate-300 truncate max-w-lg" title={doc.name}>
                 {doc.name}
               </p>
             </div>
@@ -239,14 +268,14 @@ export default function EvidenceAnnotatorModal({
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
             <Sparkles className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div className="text-xs text-amber-900 leading-relaxed">
-              <strong>Kanıt Vurgulama Rehberi:</strong> Yüklediğiniz belgenin ilgili sayfasını (örn: 5. Sayfa), gösterilmek istenen paragrafı veya fosforlu kalemle çizilecek bölümünü belirleyebilirsiniz. <strong>"Düzelt / Yenisiyle Değiştir"</strong> seçeneği ile eski dosya sunucudan temizlenir, yenisi yerini alır.
+              <strong>Kanıt Vurgulama & Düzeltme Rehberi:</strong> Belgenizin ilgili sayfasını (örn: Sayfa 5), gösterilmek istenen paragraf notunu ekleyebilir veya canlı önizleme ekranından belgeyi inceleyebilirsiniz. <strong>"Düzelt / Yenisiyle Değiştir"</strong> butonu ile bilgisayarınızdaki yeni dosyayı yüklediğinizde <strong>eski dosya sunucudan otomatik silinir.</strong>
             </div>
           </div>
 
           {/* Form Fields: Page & Highlight Note */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             
-            {/* Page Number (especially for PDFs or multi-page docs) */}
+            {/* Page Number / Section input */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 İlgili Sayfa No / Bölüm:
@@ -256,8 +285,8 @@ export default function EvidenceAnnotatorModal({
                 value={pageNumber}
                 onChange={e => setPageNumber(e.target.value)}
                 disabled={isReadOnly}
-                placeholder="Örn: Sayfa 5 veya Paragraf 2"
-                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+                placeholder="Örn: 5 veya Paragraf 2"
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none font-semibold"
               />
             </div>
 
@@ -271,52 +300,56 @@ export default function EvidenceAnnotatorModal({
                 value={highlightNote}
                 onChange={e => setHighlightNote(e.target.value)}
                 disabled={isReadOnly}
-                placeholder="Örn: Akreditasyon kalitesine ait karar 5. sayfadaki 2. paragrafta vurgulanmıştır."
-                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+                placeholder="Örn: 5. sayfadaki 2. paragraf akreditasyon kalite kanıtıdır."
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
               />
             </div>
           </div>
 
-          {/* Canvas or File Preview Area */}
+          {/* LIVE PREVIEW & DRAWING AREA */}
           {isImage ? (
             <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between border-b pb-2">
                 <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                   <Pencil className="w-4 h-4 text-amber-600" />
-                  Görsel Üzerinde Çizim & Fosforlu Kalem İşaretleme:
+                  Görsel Üzerinde Serbest Çizim & Fosforlu Kalem İşaretleme:
                 </span>
                 {!isReadOnly && (
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setSelectedTool('highlighter')}
-                      className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${selectedTool === 'highlighter' ? 'bg-yellow-400 text-slate-900 border-yellow-500 shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                      className={`px-3 py-1 text-xs font-bold rounded-lg border transition-colors flex items-center gap-1 ${selectedTool === 'highlighter' ? 'bg-yellow-400 text-slate-900 border-yellow-500 shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                     >
-                      ✏️ Fosforlu Kalem
+                      <Highlighter className="w-3.5 h-3.5" />
+                      Fosforlu Kalem
                     </button>
                     <button
                       type="button"
                       onClick={() => setSelectedTool('box')}
-                      className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${selectedTool === 'box' ? 'bg-red-600 text-white border-red-700 shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                      className={`px-3 py-1 text-xs font-bold rounded-lg border transition-colors flex items-center gap-1 ${selectedTool === 'box' ? 'bg-red-600 text-white border-red-700 shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                     >
-                      🔲 Kırmızı Kutucuk
+                      <Square className="w-3.5 h-3.5" />
+                      Kırmızı Kutucuk
                     </button>
                     <button
                       type="button"
                       onClick={handleUndo}
                       disabled={history.length <= 1}
-                      className="px-2.5 py-1 text-xs font-semibold bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 disabled:opacity-40"
+                      className="px-2.5 py-1 text-xs font-bold bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 disabled:opacity-40 flex items-center gap-1"
                     >
-                      ↩️ Geri Al
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Geri Al
                     </button>
                   </div>
                 )}
               </div>
 
-              <div className="overflow-x-auto flex justify-center bg-slate-900/5 rounded-lg p-2 min-h-[300px]">
+              <div className="overflow-x-auto flex justify-center bg-slate-900/5 rounded-lg p-2 min-h-[350px]">
                 <canvas
                   ref={canvasRef}
                   onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
                   className="cursor-crosshair border border-slate-300 shadow-md rounded max-w-full"
                 />
@@ -327,65 +360,99 @@ export default function EvidenceAnnotatorModal({
               <div className="flex items-center justify-between border-b pb-2">
                 <span className="text-xs font-bold text-slate-700 flex items-center gap-2">
                   <FileText className="w-4 h-4 text-blue-600" />
-                  PDF Belge Bağlantısı & Sayfa Yönlendirmesi:
+                  PDF Belgesi Canlı Önizleme & Sayfa Odaklama:
                 </span>
                 <a
-                  href={`${doc.url}#page=${pageNumber}`}
+                  href={pdfPreviewUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg border border-blue-200"
                 >
                   <Eye className="w-3.5 h-3.5" />
-                  Sayfa {pageNumber}'ı Aç / Gör
+                  Yeni Sekmede Aç {pageNumber ? `(Sayfa ${pageNumber})` : ''}
                 </a>
               </div>
-              <div className="p-4 bg-slate-100 rounded-lg text-xs text-slate-600 flex flex-col items-center justify-center gap-2 min-h-[120px] text-center border border-dashed border-slate-300">
-                <p className="font-semibold text-slate-800">
-                  📄 {doc.name} (PDF Belgesi)
-                </p>
-                <p className="max-w-md text-slate-500">
-                  PDF belgesi değerlendirici veya yönetici tarafından açıldığında otomatik olarak <strong>{pageNumber}. Sayfaya</strong> odaklanacaktır.
-                </p>
+              
+              {/* PDF LIVE IFRAME PREVIEW */}
+              <div className="rounded-xl overflow-hidden border border-slate-200 shadow-inner bg-slate-900 min-h-[450px]">
+                <iframe
+                  src={pdfPreviewUrl}
+                  className="w-full h-[480px] border-0"
+                  title="PDF Canlı Önizleme"
+                />
+              </div>
+            </div>
+          ) : isOfficeDoc ? (
+            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between border-b pb-2">
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-emerald-600" />
+                  Word / Office Belgesi Canlı Önizleme:
+                </span>
+                <a
+                  href={doc.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg border border-emerald-200"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  Orijinal Dosyayı İndir
+                </a>
+              </div>
+
+              {/* OFFICE DOCS LIVE GOOGLE VIEWER PREVIEW */}
+              <div className="rounded-xl overflow-hidden border border-slate-200 shadow-inner bg-slate-100 min-h-[450px]">
+                <iframe
+                  src={officePreviewUrl}
+                  className="w-full h-[480px] border-0"
+                  title="Word Canlı Önizleme"
+                />
               </div>
             </div>
           ) : (
             <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between border-b pb-2">
                 <span className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-emerald-600" />
-                  Doküman / Word Belgesi Önizleme & İşaretleme:
+                  <FileText className="w-4 h-4 text-slate-600" />
+                  Belge Önizleme:
                 </span>
               </div>
-              <div className="p-4 bg-slate-50 rounded-lg text-xs text-slate-600 flex flex-col items-center justify-center gap-2 min-h-[120px] text-center border border-dashed border-slate-300">
-                <p className="font-semibold text-slate-800">📝 {doc.name}</p>
-                <p className="text-slate-500">
-                  Yukarıdaki sayfa ve vurgu notu alanı sayesinde bu belgenin hangi paragrafının veya bölümünün akreditasyon kanıtı olduğu belirtilmiştir.
-                </p>
+              <div className="p-6 bg-slate-50 rounded-lg text-xs text-slate-600 flex flex-col items-center justify-center gap-2 min-h-[180px] text-center border border-dashed border-slate-300">
+                <p className="font-bold text-slate-800 text-sm">📄 {doc.name}</p>
+                <a
+                  href={doc.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-bold text-xs rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                >
+                  <Eye className="w-4 h-4" />
+                  Belgeyi Yeni Sekmede Görüntüle
+                </a>
               </div>
             </div>
           )}
 
-          {/* DÜZELT / YENİSİYLE DEĞİŞTİR (Replace File option) */}
+          {/* DÜZELT / YENİSİYLE DEĞİŞTİR (Replace File Option) */}
           {!isReadOnly && (
-            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800 flex items-center gap-2">
                   <RefreshCw className="w-4 h-4 text-emerald-600" />
-                  Kanıtı Düzelt / Yenisiyle Değiştir (Eskisi Sunucudan Silinir):
+                  Kanıtı Düzelt / Yenisiyle Değiştir (Eski Dosya Sunucudan Otomatik Silinir):
                 </span>
                 <button
                   type="button"
                   onClick={() => setReplacingFile(!replacingFile)}
-                  className="px-3 py-1 text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"
+                  className="px-3 py-1.5 text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"
                 >
-                  {replacingFile ? 'İptal Et' : '🔄 Yeni İşaretli Dosya Yükle'}
+                  {replacingFile ? 'İptal Et' : '🔄 Düzeltilmiş Yeni Dosya Seç'}
                 </button>
               </div>
 
               {replacingFile && (
-                <div className="p-3 bg-emerald-50/50 border border-dashed border-emerald-300 rounded-lg space-y-2">
-                  <p className="text-xs text-emerald-800">
-                    Bilgisayarınızda önceden işaretlediğiniz veya düzelttiğiniz yeni kanıt dosyasını seçin. <strong>Eski dosya sunucudan otomatik silinecektir.</strong>
+                <div className="p-4 bg-emerald-50/60 border border-dashed border-emerald-300 rounded-xl space-y-3">
+                  <p className="text-xs text-emerald-900 leading-relaxed font-medium">
+                    Bilgisayarınızda düzelttiğiniz yeni kanıt dosyasını seçin. <strong>İşlemi kaydettiğinizde eski dosya sunucudan tamamen silinecektir.</strong>
                   </p>
                   <input
                     type="file"
@@ -397,9 +464,10 @@ export default function EvidenceAnnotatorModal({
                     className="block w-full text-xs text-slate-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer"
                   />
                   {replacementFile && (
-                    <p className="text-xs font-bold text-emerald-700 flex items-center gap-1">
-                      <Check className="w-4 h-4" /> Seçilen Yeni Dosya: {replacementFile.name} ({Math.round(replacementFile.size / 1024)} KB)
-                    </p>
+                    <div className="p-2.5 bg-white rounded-lg border border-emerald-200 text-xs font-bold text-emerald-800 flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      Seçilen Yeni Dosya: {replacementFile.name} ({Math.round(replacementFile.size / 1024)} KB)
+                    </div>
                   )}
                 </div>
               )}
@@ -426,7 +494,7 @@ export default function EvidenceAnnotatorModal({
               className="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-all shadow-md disabled:opacity-60"
             >
               {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              {isSaving ? 'İşaretleme Kaydediliyor...' : 'İşaretlemeyi & Düzeltmeyi Kaydet'}
+              {isSaving ? 'Kaydediliyor...' : 'İşaretleme & Düzeltmeyi Kaydet'}
             </button>
           )}
         </div>
