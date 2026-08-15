@@ -460,6 +460,30 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
         }
       }
       
+      // 2. Automatically remove inline evidence links & tags from text editor
+      const kanitNo = index + 1;
+      let newAciklama = aciklama;
+      
+      if (docToRemove?.url) {
+        const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escapedUrl = escapeRegExp(docToRemove.url);
+        
+        // Remove <a ...href="URL"...>...</a>
+        const urlRegex = new RegExp(`<a\\s+[^>]*href=["']${escapedUrl}["'][^>]*>.*?<\\/a>`, 'gi');
+        newAciklama = newAciklama.replace(urlRegex, '');
+      }
+
+      // Remove <a ...>[Kanıt {kanitNo}]</a>
+      const tagRegex = new RegExp(`<a\\s+[^>]*>\\[Kanıt\\s+${kanitNo}\\]<\\/a>`, 'gi');
+      newAciklama = newAciklama.replace(tagRegex, '');
+
+      // Remove plain text [Kanıt {kanitNo}]
+      const plainTagRegex = new RegExp(`\\[Kanıt\\s+${kanitNo}\\]`, 'gi');
+      newAciklama = newAciklama.replace(plainTagRegex, '');
+
+      setAciklama(newAciklama);
+
+      // 3. Remove document from state
       const newDocs = dokumanlar.filter((_, i) => i !== index);
       setDokumanlar(newDocs);
     }
