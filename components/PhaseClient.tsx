@@ -133,22 +133,54 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
 
         if (Array.isArray(row.kanit_dosyalari) && row.kanit_dosyalari.length > 0) {
           let text = row.aciklama || '';
-          const updatedRowDocs = row.kanit_dosyalari.map((doc: any) => {
+          const updatedRowDocs = row.kanit_dosyalari.map((doc: any, docIdx: number) => {
             const evId = doc.evidence_id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ev_${Math.random().toString(36).substring(2, 9)}`);
             const assignedNo = globalCounter++;
             const updatedDoc = { ...doc, evidence_id: evId, evidence_no: assignedNo };
 
             const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            let replaced = false;
+
             if (doc.evidence_id) {
               const escapedEvId = escapeRegExp(doc.evidence_id);
               const idRegex = new RegExp(`(<a\\s+[^>]*data-evidence-id=["']${escapedEvId}["'][^>]*>)[^<]*(<\\/a>)`, 'gi');
-              text = text.replace(idRegex, `$1[Kanıt ${assignedNo}]$2`);
+              if (idRegex.test(text)) {
+                text = text.replace(idRegex, `$1[Kanıt ${assignedNo}]$2`);
+                replaced = true;
+              }
             }
-            if (doc.url) {
+
+            if (!replaced && doc.url) {
               const baseUrl = doc.url.split('#')[0].split('?')[0];
               const escapedBaseUrl = escapeRegExp(baseUrl);
               const urlRegex = new RegExp(`(<a\\s+[^>]*href=["']${escapedBaseUrl}[^"']*["'][^>]*>)[^<]*(<\\/a>)`, 'gi');
-              text = text.replace(urlRegex, `$1[Kanıt ${assignedNo}]$2`);
+              if (urlRegex.test(text)) {
+                text = text.replace(urlRegex, `$1[Kanıt ${assignedNo}]$2`);
+                replaced = true;
+              }
+            }
+
+            if (!replaced && doc.annotated_url) {
+              const baseAnnoUrl = doc.annotated_url.split('#')[0].split('?')[0];
+              const escapedAnnoUrl = escapeRegExp(baseAnnoUrl);
+              const annoRegex = new RegExp(`(<a\\s+[^>]*href=["']${escapedAnnoUrl}[^"']*["'][^>]*>)[^<]*(<\\/a>)`, 'gi');
+              if (annoRegex.test(text)) {
+                text = text.replace(annoRegex, `$1[Kanıt ${assignedNo}]$2`);
+                replaced = true;
+              }
+            }
+
+            if (!replaced) {
+              let matchCount = 0;
+              text = text.replace(/(<a\s+[^>]*>)\s*\[Kanıt\s+\d+\]\s*(<\/a>)/gi, (fullMatch, p1, p2) => {
+                if (matchCount === docIdx) {
+                  matchCount++;
+                  replaced = true;
+                  return `${p1}[Kanıt ${assignedNo}]${p2}`;
+                }
+                matchCount++;
+                return fullMatch;
+              });
             }
 
             return updatedDoc;

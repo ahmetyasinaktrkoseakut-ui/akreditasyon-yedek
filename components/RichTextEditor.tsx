@@ -17,13 +17,33 @@ export interface RichTextEditorRef {
   insertContentAndGetHTML: (content: string) => string;
 }
 
+const CustomLink = Link.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      'data-evidence-id': {
+        default: null,
+        parseHTML: element => element.getAttribute('data-evidence-id'),
+        renderHTML: attributes => {
+          if (!attributes['data-evidence-id']) {
+            return {};
+          }
+          return {
+            'data-evidence-id': attributes['data-evidence-id'],
+          };
+        },
+      },
+    };
+  },
+});
+
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
   ({ content, onChange, readOnly = false, minHeight = '160px' }, ref) => {
     const editor = useEditor({
       editable: !readOnly,
       extensions: [
         StarterKit,
-        Link.configure({
+        CustomLink.configure({
           openOnClick: false,
           HTMLAttributes: {
             rel: 'noopener noreferrer',
