@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Loader2, X, Pencil, Trash2, Check, RefreshCw, Eye, FileText, Image as ImageIcon, Sparkles, Square, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { PDFDocument } from 'pdf-lib';
 
 interface EvidenceDoc {
   name: string;
@@ -350,13 +351,61 @@ export default function EvidenceAnnotatorModal({
           finalUrl = publicUrlData.publicUrl;
         }
       }
-      // 3. Export PDF/Image canvas drawing
+      // 3. Export PDF drawing embedded on target page preserving all pages using pdf-lib
+      else if (isPdf && canvasRef.current && history.length > 1) {
+        oldUrlToDelete = doc.annotated_url && doc.annotated_url !== doc.url ? doc.annotated_url : undefined;
+        const cleanName = doc.name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^/.]+$/, '');
+        
+        try {
+          const existingPdfBytes = await fetch(doc.url).then(res => res.arrayBuffer());
+          const pdfDoc = await PDFDocument.load(existingPdfBytes);
+          
+          const canvas = canvasRef.current;
+          const drawingPngDataUrl = canvas.toDataURL('image/png');
+          const drawingPngImage = await pdfDoc.embedPng(drawingPngDataUrl);
+
+          const pageIndex = Math.max(0, (currentPage || 1) - 1);
+          if (pageIndex < pdfDoc.getPageCount()) {
+            const targetPage = pdfDoc.getPage(pageIndex);
+            const { width, height } = targetPage.getSize();
+            
+            targetPage.drawImage(drawingPngImage, {
+              x: 0,
+              y: 0,
+              width: width,
+              height: height,
+            });
+          }
+
+          const modifiedPdfBytes = await pdfDoc.save();
+          const pdfBlob = new Blob([modifiedPdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+          const newFileName = `isaretli_${Date.now()}_${cleanName}.pdf`;
+
+          const { error: uploadError } = await supabase.storage.from('dokumanlar').upload(newFileName, pdfBlob);
+          if (uploadError) throw uploadError;
+
+          const { data: publicUrlData } = supabase.storage.from('dokumanlar').getPublicUrl(newFileName);
+          finalUrl = publicUrlData.publicUrl;
+        } catch (pdfErr) {
+          console.error("PDF embedding error, falling back to PNG export:", pdfErr);
+          const canvas = canvasRef.current;
+          const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+          if (blob) {
+            const newFileName = `isaretli_${Date.now()}_${cleanName}.png`;
+            const { error: uploadError } = await supabase.storage.from('dokumanlar').upload(newFileName, blob);
+            if (uploadError) throw uploadError;
+            const { data: publicUrlData } = supabase.storage.from('dokumanlar').getPublicUrl(newFileName);
+            finalUrl = publicUrlData.publicUrl;
+          }
+        }
+      }
+      // 4. Export Image canvas drawing
       else if (canvasRef.current && history.length > 1) {
         const canvas = canvasRef.current;
         const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
         
         if (blob) {
-          oldUrlToDelete = doc.annotated_url || doc.url;
+          oldUrlToDelete = doc.annotated_url && doc.annotated_url !== doc.url ? doc.annotated_url : undefined;
           const cleanName = doc.name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^/.]+$/, '');
           const newFileName = `isaretli_${Date.now()}_${cleanName}.png`;
           const { error: uploadError } = await supabase.storage.from('dokumanlar').upload(newFileName, blob);
@@ -373,12 +422,12 @@ export default function EvidenceAnnotatorModal({
         displayUrl = `${baseUrl}#page=${currentPage}`;
       }
 
-      // If document was exported as PNG drawing, update name extension to .png so re-opening renders it as an image canvas!
       let newDocName = doc.name;
       if (replacementFile) {
         newDocName = replacementFile.name;
       } else if (finalUrl !== doc.url) {
-        newDocName = `${doc.name.replace(/\.[^/.]+$/, '')}_isaretli.png`;
+        const ext = finalUrl.endsWith('.pdf') ? '.pdf' : '.png';
+        newDocName = `${doc.name.replace(/\.[^/.]+$/, '')}_isaretli${ext}`;
       }
 
       const updatedDoc: EvidenceDoc = {
