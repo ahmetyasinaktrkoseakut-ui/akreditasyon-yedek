@@ -484,7 +484,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
             </span>
             <h1 className="text-xl font-bold text-slate-800">{getLocalizedField(olcutDetay, 'olcut_adi', locale)}</h1>
           </div>
-          <p className="text-sm text-slate-500">{tStepPanel(`${phaseId}_title`)} {t('header_subtitle')}</p>
+          <p className="text-sm text-slate-500">{t('process_management_desc', { phaseTitle: tStepPanel(`${phaseId}_title`) })}</p>
         </div>
 
         <div className="flex items-center gap-3">
