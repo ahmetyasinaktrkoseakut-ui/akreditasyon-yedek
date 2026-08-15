@@ -69,71 +69,97 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
 
   // Direct fresh database persistence to prevent React stale closure bugs
   const persistData = async (updatedDocs: any[], updatedAciklama: string) => {
+    if (!selectedPeriod) return;
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const upsertData: Record<string, any> = {
+      alt_olcut_id: resolvedParams.id,
+      puko_asamasi: phaseId,
+      donem_id: selectedPeriod.id,
+      aciklama: updatedAciklama,
+      kanit_dosyalari: updatedDocs,
+      kullanici_id: user?.id,
+      durum: onayDurumu || 'Taslak',
+      guncellenme_tarihi: new Date().toISOString(),
+    };
+
+    if (pukoId) {
+      upsertData.id = pukoId;
+    }
+
+    const { data, error } = await supabase
+      .from('puko_degerlendirmeleri')
+      .upsert(upsertData)
+      .select();
+
+    if (error) throw error;
+    if (data && data[0]?.id && !pukoId) {
+      setPukoId(data[0].id);
+    }
+  };
+
+  // Re-index all PUKO stage evidences sequentially 1..N across all stages
+  const reindexProjectEvidences = async () => {
     try {
       if (!selectedPeriod) return;
-      const { data: { user } } = await supabase.auth.getUser();
-
-      const upsertData: Record<string, any> = {
-        alt_olcut_id: resolvedParams.id,
-        puko_asamasi: phaseId,
-        donem_id: selectedPeriod.id,
-        aciklama: updatedAciklama,
-        kanit_dosyalari: updatedDocs,
-        kullanici_id: user?.id,
-        guncellenme_tarihi: new Date().toISOString(),
-      };
-
-      if (pukoId) {
-        upsertData.id = pukoId;
-      }
-
-      const { data, error } = await supabase
-        .from('puko_degerlendirmeleri')
-        .upsert(upsertData)
-        .select();
-
-      if (error) throw error;
-      if (data && data[0]?.id && !pukoId) {
-        setPukoId(data[0].id);
-      }
-    } catch (err) {
-      console.error("Auto persist error:", err);
-    }
-  };
-
-  // Calculate project-wide global continuous evidence number across PUKO stages
-  const calculateGlobalEvidenceNumber = async (idxInCurrentStage: number) => {
-    try {
       const orderMap: Record<string, number> = { planlama: 1, uygulama: 2, kontrol: 3, onlem: 4, olgunluk: 5 };
+
+      const { data: allRows } = await supabase
+        .from('puko_degerlendirmeleri')
+        .select('*')
+        .eq('alt_olcut_id', resolvedParams.id)
+        .eq('donem_id', selectedPeriod.id);
+
+      if (!allRows || allRows.length === 0) return;
+
+      const sortedRows = [...allRows].sort((a, b) => (orderMap[a.puko_asamasi] || 99) - (orderMap[b.puko_asamasi] || 99));
+
+      let globalCounter = 1;
+      let currentStagePrevCount = 0;
       const currentOrder = orderMap[phaseId] || 1;
 
-      const { data: allPukoRows } = await supabase
-        .from('puko_degerlendirmeleri')
-        .select('puko_asamasi, kanit_dosyalari')
-        .eq('alt_olcut_id', resolvedParams.id)
-        .eq('donem_id', selectedPeriod?.id);
+      for (const row of sortedRows) {
+        const rowOrder = orderMap[row.puko_asamasi] || 99;
+        if (rowOrder < currentOrder && Array.isArray(row.kanit_dosyalari)) {
+          currentStagePrevCount += row.kanit_dosyalari.length;
+        }
 
-      let previousDocsCount = 0;
-      if (allPukoRows) {
-        allPukoRows.forEach((row: any) => {
-          const rowOrder = orderMap[row.puko_asamasi] || 99;
-          if (rowOrder < currentOrder && Array.isArray(row.kanit_dosyalari)) {
-            previousDocsCount += row.kanit_dosyalari.length;
+        if (Array.isArray(row.kanit_dosyalari) && row.kanit_dosyalari.length > 0) {
+          let text = row.aciklama || '';
+          const updatedRowDocs = row.kanit_dosyalari.map((doc: any) => {
+            const evId = doc.evidence_id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ev_${Math.random().toString(36).substring(2, 9)}`);
+            const assignedNo = globalCounter++;
+            const updatedDoc = { ...doc, evidence_id: evId, evidence_no: assignedNo };
+
+            const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            if (doc.evidence_id) {
+              const escapedEvId = escapeRegExp(doc.evidence_id);
+              const idRegex = new RegExp(`(<a\\s+[^>]*data-evidence-id=["']${escapedEvId}["'][^>]*>)\\[Kanıt\\s+\\d+\\](<\\/a>)`, 'gi');
+              text = text.replace(idRegex, `$1[Kanıt ${assignedNo}]$2`);
+            }
+            if (doc.url) {
+              const escapedUrl = escapeRegExp(doc.url);
+              const urlRegex = new RegExp(`(<a\\s+[^>]*href=["']${escapedUrl}["'][^>]*>)\\[Kanıt\\s+\\d+\\](<\\/a>)`, 'gi');
+              text = text.replace(urlRegex, `$1[Kanıt ${assignedNo}]$2`);
+            }
+
+            return updatedDoc;
+          });
+
+          await supabase
+            .from('puko_degerlendirmeleri')
+            .update({ kanit_dosyalari: updatedRowDocs, aciklama: text })
+            .eq('id', row.id);
+
+          if (row.puko_asamasi === phaseId) {
+            setDokumanlar(updatedRowDocs);
+            setAciklama(text);
           }
-        });
+        }
       }
-
-      return previousDocsCount + idxInCurrentStage + 1;
+      setPreviousDocsCount(currentStagePrevCount);
     } catch (err) {
-      return idxInCurrentStage + 1;
-    }
-  };
-
-  const handleInsertEvidenceAtCursor = async (doc: any, idx: number) => {
-    const kanitNo = await calculateGlobalEvidenceNumber(idx);
-    const tagHtml = `<a href="${doc.url}" target="_blank" rel="noopener noreferrer" style="color: #ea580c; font-weight: bold; text-decoration: underline; margin: 0 4px;">[Kanıt ${kanitNo}]</a>&nbsp;`;
-    if (editorRef.current) {
-      editorRef.current.insertContent(tagHtml);
+      console.error('Reindexing error:', err);
     }
   };
 
@@ -148,19 +174,23 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       const oldDoc = dokumanlar[selectedDocForAnnotation.index];
       const newDocs = [...dokumanlar];
       newDocs[selectedDocForAnnotation.index] = updatedDoc;
-      setDokumanlar(newDocs);
 
       let freshAciklama = aciklama;
-      // Automatically update inline evidence URLs in aciklama text
       if (oldDoc?.url && updatedDoc?.url && oldDoc.url !== updatedDoc.url) {
         const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const escapedOldUrl = escapeRegExp(oldDoc.url);
         const urlRegex = new RegExp(escapedOldUrl, 'gi');
         freshAciklama = freshAciklama.replace(urlRegex, updatedDoc.url);
-        setAciklama(freshAciklama);
       }
 
-      // Delete old file immediately from Supabase Storage with explicit error handling
+      setDokumanlar(newDocs);
+      setAciklama(freshAciklama);
+
+      // 1. Save database FIRST
+      await persistData(newDocs, freshAciklama);
+      await reindexProjectEvidences();
+
+      // 2. Delete old storage file ONLY AFTER successful DB persist
       if (oldUrlToDelete) {
         try {
           let bucketPath = '';
@@ -174,16 +204,14 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
             const decodedPath = decodeURIComponent(bucketPath);
             const { error: remErr } = await supabase.storage.from('dokumanlar').remove([decodedPath]);
             if (remErr) {
-              console.error('Storage removal error:', remErr);
+              alert(`Uyarı: Dosya veritabanından güncellendi ancak eski depolama dosyası silinirken uyarı alındı: ${remErr.message}`);
             }
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error('Old file deletion error:', err);
+          alert(`Eski dosya temizleme uyarısı: ${err?.message || err}`);
         }
       }
-
-      // Automatically persist FRESH state directly to Supabase database!
-      await persistData(newDocs, freshAciklama);
     }
   };
 
@@ -515,18 +543,34 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
 
       const { data: publicUrlData } = supabase.storage.from('dokumanlar').getPublicUrl(filePath);
 
+      const evId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ev_${Math.random().toString(36).substring(2, 9)}`;
+      const newDocNo = previousDocsCount + dokumanlar.length + 1;
+
       const newDoc = {
+        evidence_id: evId,
+        evidence_no: newDocNo,
         name: file.name,
         url: publicUrlData.publicUrl,
         size: Math.round(file.size / 1024)
       };
 
       const updatedDocs = [...dokumanlar, newDoc];
-      const newIdx = updatedDocs.length - 1;
       setDokumanlar(updatedDocs);
       
-      await handleInsertEvidenceAtCursor(newDoc, newIdx);
-      await persistData(updatedDocs, aciklama);
+      const tagHtml = `<a data-evidence-id="${evId}" href="${newDoc.url}" target="_blank" rel="noopener noreferrer" style="color: #ea580c; font-weight: bold; text-decoration: underline; margin: 0 4px;">[Kanıt ${newDocNo}]</a>&nbsp;`;
+      
+      let freshAciklama = aciklama;
+      if (editorRef.current) {
+        freshAciklama = editorRef.current.insertContentAndGetHTML(tagHtml) || editorRef.current.getHTML() || (aciklama + tagHtml);
+      } else {
+        freshAciklama += tagHtml;
+      }
+
+      setAciklama(freshAciklama);
+
+      // Save fresh data to DB FIRST
+      await persistData(updatedDocs, freshAciklama);
+      await reindexProjectEvidences();
 
     } catch (error: any) {
       console.error('File upload error:', error);

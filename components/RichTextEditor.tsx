@@ -13,6 +13,8 @@ interface RichTextEditorProps {
 
 export interface RichTextEditorRef {
   insertContent: (content: string) => void;
+  getHTML: () => string;
+  insertContentAndGetHTML: (content: string) => string;
 }
 
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
@@ -23,6 +25,10 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
         StarterKit,
         Link.configure({
           openOnClick: false,
+          HTMLAttributes: {
+            rel: 'noopener noreferrer',
+            target: '_blank',
+          },
         }),
       ],
       content: content,
@@ -37,6 +43,16 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
         if (editor) {
           editor.chain().focus().insertContent(html).run();
         }
+      },
+      getHTML: () => {
+        return editor ? editor.getHTML() : '';
+      },
+      insertContentAndGetHTML: (html: string) => {
+        if (editor) {
+          editor.chain().focus().insertContent(html).run();
+          return editor.getHTML();
+        }
+        return '';
       },
     }));
 
