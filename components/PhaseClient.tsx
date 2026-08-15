@@ -70,7 +70,6 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
   // Direct fresh database persistence to prevent React stale closure bugs
   const persistData = async (updatedDocs: any[], updatedAciklama: string) => {
     if (!selectedPeriod) return;
-    const { data: { user } } = await supabase.auth.getUser();
 
     const upsertData: Record<string, any> = {
       alt_olcut_id: resolvedParams.id,
@@ -78,7 +77,6 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       donem_id: selectedPeriod.id,
       aciklama: updatedAciklama,
       kanit_dosyalari: updatedDocs,
-      kullanici_id: user?.id,
       durum: onayDurumu || 'Taslak',
     };
 
