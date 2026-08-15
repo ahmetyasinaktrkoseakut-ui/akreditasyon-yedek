@@ -270,15 +270,22 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
                 birlesikKanitlar.push(ev);
               }
               // Re-number inline evidence link text to match report-wide global ev.no
+              const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              if (k.evidence_id) {
+                const escapedEvId = escapeRegExp(k.evidence_id);
+                const idRegex = new RegExp(`(<a\\s+[^>]*data-evidence-id=["']${escapedEvId}["'][^>]*>)[^<]*(<\\/a>)`, 'gi');
+                phaseText = phaseText.replace(idRegex, `$1[Kanıt ${ev.no}]$2`);
+              }
               if (k.url) {
-                const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const escapedUrl = escapeRegExp(k.url);
-                const linkTextRegex = new RegExp(`(<a\\s+[^>]*href=["']${escapedUrl}["'][^>]*>)\\[Kanıt\\s+\\d+\\](<\\/a>)`, 'gi');
+                const baseUrl = k.url.split('#')[0].split('?')[0];
+                const escapedBaseUrl = escapeRegExp(baseUrl);
+                const linkTextRegex = new RegExp(`(<a\\s+[^>]*href=["']${escapedBaseUrl}[^"']*["'][^>]*>)[^<]*(<\\/a>)`, 'gi');
                 phaseText = phaseText.replace(linkTextRegex, `$1[Kanıt ${ev.no}]$2`);
               }
 
               const isAlreadyInline = (k.url && phaseText.includes(k.url)) || 
-                                      (k.annotated_url && phaseText.includes(k.annotated_url));
+                                      (k.annotated_url && phaseText.includes(k.annotated_url)) ||
+                                      (k.evidence_id && phaseText.includes(k.evidence_id));
               if (!isAlreadyInline) {
                 unplacedEvidenceStrings.push(`<a href="${ev.url}" target="_blank" rel="noopener noreferrer" style="color: #ea580c; text-decoration: underline;">[Kanıt ${ev.no}]</a>`);
               }
