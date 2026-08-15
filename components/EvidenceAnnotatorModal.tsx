@@ -36,7 +36,7 @@ export default function EvidenceAnnotatorModal({
   const [totalPages, setTotalPages] = useState<number>(1);
   const [selectedTool, setSelectedTool] = useState<'highlighter' | 'box'>('highlighter');
 
-  // Solid Pen Color & Size (Mat Normal Kalem - Opak Opak)
+  // Solid Pen Color & Size (Mat Normal Kalem)
   const [penColor, setPenColor] = useState<string>('#eab308'); // Solid Yellow
   const [penSize, setPenSize] = useState<number>(8); // Medium 8px solid stroke
 
@@ -44,11 +44,16 @@ export default function EvidenceAnnotatorModal({
   const [replacingFile, setReplacingFile] = useState(false);
   const [replacementFile, setReplacementFile] = useState<File | null>(null);
 
-  // PDF.js, JSZip & Canvas Drawing State
+  // PDF.js & Canvas Drawing State
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const wordContainerRef = useRef<HTMLDivElement | null>(null);
+  
   const [pdfLibLoaded, setPdfLibLoaded] = useState(false);
-  const [zipLibLoaded, setZipLibLoaded] = useState(false);
+  const [mammothLoaded, setMammothLoaded] = useState(false);
+  const [html2canvasLoaded, setHtml2canvasLoaded] = useState(false);
+  
   const [renderingDoc, setRenderingDoc] = useState(false);
+  const [wordHtml, setWordHtml] = useState<string>('');
   const [isDrawing, setIsDrawing] = useState(false);
   const [lastPos, setLastPos] = useState<{ x: number; y: number } | null>(null);
   const [boxStartPos, setBoxStartPos] = useState<{ x: number; y: number } | null>(null);
@@ -58,7 +63,7 @@ export default function EvidenceAnnotatorModal({
   const isPdf = doc?.name ? /\.pdf$/i.test(doc.name) : false;
   const isOfficeDoc = doc?.name ? /\.(doc|docx|xls|xlsx|ppt|pptx)$/i.test(doc.name) : false;
 
-  // Dynamically Load PDF.js & JSZip from CDN
+  // Dynamically Load PDF.js, Mammoth.js & html2canvas from CDN
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
@@ -77,16 +82,28 @@ export default function EvidenceAnnotatorModal({
       setPdfLibLoaded(true);
     }
 
-    // Load JSZip for Word document parsing
-    if (!(window as any).JSZip) {
-      const zScript = document.createElement('script');
-      zScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-      zScript.onload = () => {
-        setZipLibLoaded(true);
+    // Load Mammoth.js for rich Word HTML conversion (tables, logos, styling)
+    if (!(window as any).mammoth) {
+      const mScript = document.createElement('script');
+      mScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js';
+      mScript.onload = () => {
+        setMammothLoaded(true);
       };
-      document.head.appendChild(zScript);
+      document.head.appendChild(mScript);
     } else {
-      setZipLibLoaded(true);
+      setMammothLoaded(true);
+    }
+
+    // Load html2canvas for snapshotting Word document HTML + Drawing
+    if (!(window as any).html2canvas) {
+      const hScript = document.createElement('script');
+      hScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      hScript.onload = () => {
+        setHtml2canvasLoaded(true);
+      };
+      document.head.appendChild(hScript);
+    } else {
+      setHtml2canvasLoaded(true);
     }
   }, []);
 
@@ -98,34 +115,54 @@ export default function EvidenceAnnotatorModal({
       setReplacementFile(null);
       setReplacingFile(false);
       setHistory([]);
+      setWordHtml('');
     }
   }, [doc]);
 
-  // Helper to wrap text for Word doc canvas
-  const wrapText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) => {
-    const words = text.split(' ');
-    let line = '';
-    let currentY = y;
+  // Render Word Document using Mammoth.js to preserve logos, tables, borders & layout
+  const renderWordDocument = async () => {
+    if (!isOpen || !doc?.url || !isOfficeDoc) return;
+    setRenderingDoc(true);
 
-    for (let n = 0; n < words.length; n++) {
-      const testLine = line + words[n] + ' ';
-      const metrics = ctx.measureText(testLine);
-      const testWidth = metrics.width;
-      if (testWidth > maxWidth && n > 0) {
-        ctx.fillText(line, x, currentY);
-        line = words[n] + ' ';
-        currentY += lineHeight;
-      } else {
-        line = testLine;
+    try {
+      if (mammothLoaded && (window as any).mammoth) {
+        const res = await fetch(doc.url);
+        const arrayBuffer = await res.arrayBuffer();
+        const result = await (window as any).mammoth.convertToHtml({ arrayBuffer });
+        setWordHtml(result.value);
       }
+    } catch (err) {
+      console.error('Word rendering error:', err);
+    } finally {
+      setRenderingDoc(false);
     }
-    ctx.fillText(line, x, currentY);
-    return currentY + lineHeight;
   };
 
-  // Render Image, PDF Page, or Real Word Text onto Canvas at Full Crisp Resolution
+  // Setup Word Canvas Overlay after Mammoth HTML renders
+  useEffect(() => {
+    if (isOfficeDoc && wordHtml && wordContainerRef.current && canvasRef.current) {
+      const container = wordContainerRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      canvas.width = container.scrollWidth || 800;
+      canvas.height = container.scrollHeight || 1000;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const initialState = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      setHistory([initialState]);
+    }
+  }, [wordHtml, isOfficeDoc]);
+
+  // Render Image or PDF Page onto Canvas at Pure Natural Resolution
   const renderDocumentToCanvas = async () => {
     if (!isOpen || !doc?.url || !canvasRef.current) return;
+    if (isOfficeDoc) {
+      renderWordDocument();
+      return;
+    }
+
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -138,7 +175,6 @@ export default function EvidenceAnnotatorModal({
         img.crossOrigin = 'anonymous';
         img.src = doc.url;
         img.onload = () => {
-          // Native Image Dimensions
           canvas.width = img.naturalWidth || img.width;
           canvas.height = img.naturalHeight || img.height;
 
@@ -156,7 +192,6 @@ export default function EvidenceAnnotatorModal({
         const pageToRender = Math.min(Math.max(1, currentPage), pdf.numPages);
         const page = await pdf.getPage(pageToRender);
         
-        // Render PDF at High-Quality 1.8x Scale
         const viewport = page.getViewport({ scale: 1.8 });
 
         canvas.width = Math.round(viewport.width);
@@ -167,75 +202,6 @@ export default function EvidenceAnnotatorModal({
           viewport: viewport,
         };
         await page.render(renderContext).promise;
-
-        const initialState = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        setHistory([initialState]);
-        setRenderingDoc(false);
-      } else if (isOfficeDoc) {
-        // Word Document: Standard Full A4 Paper Aspect Ratio (850x1150)
-        let extractedParagraphs: string[] = [];
-
-        if (zipLibLoaded && (window as any).JSZip) {
-          try {
-            const res = await fetch(doc.url);
-            const blob = await res.blob();
-            const zip = await (window as any).JSZip.loadAsync(blob);
-            const docXml = await zip.file('word/document.xml')?.async('string');
-            if (docXml) {
-              const parser = new DOMParser();
-              const xmlDoc = parser.parseFromString(docXml, 'text/xml');
-              const pNodes = Array.from(xmlDoc.getElementsByTagName('w:p'));
-              extractedParagraphs = pNodes.map(p => {
-                const tNodes = Array.from(p.getElementsByTagName('w:t'));
-                return tNodes.map(t => t.textContent).join('');
-              }).filter(t => t.trim().length > 0);
-            }
-          } catch (e) {
-            console.warn('Word XML text extraction notice:', e);
-          }
-        }
-
-        canvas.width = 850;
-        canvas.height = Math.max(1150, 120 + (extractedParagraphs.length * 45));
-
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Header Paper Banner
-        ctx.fillStyle = '#1e293b';
-        ctx.fillRect(0, 0, canvas.width, 50);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 15px sans-serif';
-        ctx.fillText(`📄 Word Metin Belgesi: ${doc.name}`, 20, 31);
-
-        // Render extracted Word text paragraphs
-        let yPos = 80;
-        ctx.fillStyle = '#0f172a';
-        ctx.font = 'bold 16px sans-serif';
-        yPos = wrapText(ctx, doc.name.replace(/\.[^/.]+$/, ''), 40, yPos, 770, 24);
-        yPos += 10;
-
-        ctx.strokeStyle = '#e2e8f0';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(40, yPos);
-        ctx.lineTo(810, yPos);
-        ctx.stroke();
-        yPos += 20;
-
-        if (extractedParagraphs.length > 0) {
-          ctx.fillStyle = '#334155';
-          ctx.font = '13px sans-serif';
-          for (const para of extractedParagraphs) {
-            yPos = wrapText(ctx, para, 40, yPos, 770, 20);
-            yPos += 12;
-          }
-        } else {
-          ctx.fillStyle = '#64748b';
-          ctx.font = 'italic 13px sans-serif';
-          yPos = wrapText(ctx, "Word belgesi metinleri tuvale işlenmiştir. İlgili metinlerin üzerini yukarıdaki kalemi kullanarak çizebilirsiniz.", 40, yPos, 770, 20);
-        }
 
         const initialState = ctx.getImageData(0, 0, canvas.width, canvas.height);
         setHistory([initialState]);
@@ -253,11 +219,11 @@ export default function EvidenceAnnotatorModal({
     if (isOpen) {
       renderDocumentToCanvas();
     }
-  }, [isOpen, doc, currentPage, pdfLibLoaded, zipLibLoaded]);
+  }, [isOpen, doc, currentPage, pdfLibLoaded, mammothLoaded]);
 
   if (!isOpen || !doc) return null;
 
-  // Exact Mouse Position Mapping without letterbox distortion
+  // Exact Mouse Position Mapping
   const getCanvasPos = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const canvas = canvasRef.current;
@@ -289,7 +255,6 @@ export default function EvidenceAnnotatorModal({
     const currentPos = getCanvasPos(e);
 
     if (selectedTool === 'highlighter') {
-      // Solid Pen Stroke (Mat Normal Çizim Kalemi)
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(lastPos.x, lastPos.y);
@@ -303,7 +268,6 @@ export default function EvidenceAnnotatorModal({
 
       setLastPos(currentPos);
     } else if (selectedTool === 'box' && boxStartPos && history.length > 0) {
-      // Live Red Box Preview
       const lastSnapshot = history[history.length - 1];
       ctx.putImageData(lastSnapshot, 0, 0);
 
@@ -371,7 +335,22 @@ export default function EvidenceAnnotatorModal({
         const { data: publicUrlData } = supabase.storage.from('dokumanlar').getPublicUrl(newFileName);
         finalUrl = publicUrlData.publicUrl;
       } 
-      // 2. Export canvas drawing for PDF/Image/Word
+      // 2. Export Word Document Drawing using html2canvas
+      else if (isOfficeDoc && wordContainerRef.current && (window as any).html2canvas) {
+        oldUrlToDelete = doc.annotated_url || undefined;
+        const htmlCanvas = await (window as any).html2canvas(wordContainerRef.current, { scale: 2, useCORS: true });
+        const blob = await new Promise<Blob | null>(resolve => htmlCanvas.toBlob(resolve, 'image/png'));
+        if (blob) {
+          const cleanName = doc.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const newFileName = `isaretli_word_${Date.now()}_${cleanName}.png`;
+          const { error: uploadError } = await supabase.storage.from('dokumanlar').upload(newFileName, blob);
+          if (!uploadError) {
+            const { data: publicUrlData } = supabase.storage.from('dokumanlar').getPublicUrl(newFileName);
+            finalUrl = publicUrlData.publicUrl;
+          }
+        }
+      }
+      // 3. Export PDF/Image canvas drawing
       else if (canvasRef.current && history.length > 1) {
         const canvas = canvasRef.current;
         const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
@@ -417,7 +396,7 @@ export default function EvidenceAnnotatorModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-3 overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[96vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[95vh] flex flex-col overflow-hidden">
         
         {/* Header */}
         <div className="px-5 py-3 bg-slate-900 text-white flex items-center justify-between flex-shrink-0">
@@ -568,7 +547,7 @@ export default function EvidenceAnnotatorModal({
           )}
         </div>
 
-        {/* Modal Body - Smooth Scrollable Container */}
+        {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-100 flex flex-col">
           
           {/* Note Input */}
@@ -586,7 +565,7 @@ export default function EvidenceAnnotatorModal({
             />
           </div>
 
-          {/* MAIN INTERACTIVE CANVAS PREVIEW AREA - FULL CLEAR READABLE WORKSPACE */}
+          {/* MAIN INTERACTIVE CANVAS PREVIEW AREA */}
           <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm flex-1 flex flex-col">
             <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b pb-1.5 flex-shrink-0">
               <span className="flex items-center gap-1.5">
@@ -594,7 +573,7 @@ export default function EvidenceAnnotatorModal({
                 {isPdf 
                   ? `PDF Sayfa ${currentPage} Çizim Tuvali:` 
                   : isOfficeDoc 
-                  ? 'Word / Doküman Çizim & İşaretleme Tuvali:' 
+                  ? 'Word Belgesi Orijinal Görünüm & Çizim Tuvali:' 
                   : 'Görsel Çizim & İşaretleme Tuvali:'}
               </span>
               {renderingDoc && (
@@ -604,23 +583,60 @@ export default function EvidenceAnnotatorModal({
               )}
             </div>
 
-            {/* Full-Resolution Read & Draw Workspace with Smooth Vertical Scrolling */}
-            <div className="overflow-y-auto overflow-x-auto bg-slate-900/10 rounded-lg p-4 min-h-[420px] max-h-[60vh] flex justify-center items-start">
-              <canvas
-                ref={canvasRef}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                className="cursor-crosshair border border-slate-300 shadow-md rounded bg-white block"
-                style={{
-                  width: '100%',
-                  maxWidth: '850px',
-                  height: 'auto',
-                  display: 'block',
-                  margin: '0 auto'
-                }}
-              />
-            </div>
+            {/* WORKSPACE AREA */}
+            {isOfficeDoc ? (
+              /* WORD DOCUMENT RICH HTML WORKSPACE (Logos, Formatted Tables & Drawing Overlay) */
+              <div className="overflow-y-auto overflow-x-auto bg-slate-900/10 rounded-lg p-4 min-h-[450px] max-h-[60vh] flex justify-center items-start">
+                <div ref={wordContainerRef} className="relative bg-white border border-slate-300 shadow-xl rounded-lg p-8 w-full max-w-[850px] min-h-[950px] text-slate-900 font-sans leading-relaxed text-sm">
+                  {/* WORD HTML CONTENT (Logos, Tables, Styling) */}
+                  <style jsx global>{`
+                    .word-content table {
+                      width: 100% !important;
+                      border-collapse: collapse !important;
+                      margin: 1rem 0 !important;
+                    }
+                    .word-content td, .word-content th {
+                      border: 1.5px solid #334155 !important;
+                      padding: 6px 10px !important;
+                    }
+                    .word-content img {
+                      max-width: 100% !important;
+                      height: auto !important;
+                      display: inline-block !important;
+                    }
+                  `}</style>
+                  
+                  <div className="word-content" dangerouslySetInnerHTML={{ __html: wordHtml || `<p class="text-slate-400 italic">Word belgesi yükleniyor...</p>` }} />
+
+                  {/* TRANSPARENT DRAWING OVERLAY CANVAS ON TOP OF WORD DOC */}
+                  <canvas
+                    ref={canvasRef}
+                    onMouseDown={handleMouseDown}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    className="absolute inset-0 cursor-crosshair z-10 w-full h-full"
+                  />
+                </div>
+              </div>
+            ) : (
+              /* PDF & IMAGE FULL-RESOLUTION WORKSPACE */
+              <div className="overflow-y-auto overflow-x-auto bg-slate-900/10 rounded-lg p-4 min-h-[420px] max-h-[60vh] flex justify-center items-start">
+                <canvas
+                  ref={canvasRef}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  className="cursor-crosshair border border-slate-300 shadow-md rounded bg-white block"
+                  style={{
+                    width: '100%',
+                    maxWidth: '850px',
+                    height: 'auto',
+                    display: 'block',
+                    margin: '0 auto'
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           {/* DÜZELT / YENİSİYLE DEĞİŞTİR (Replace File Option) */}
