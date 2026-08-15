@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Loader2, X, Highlighter, Pencil, Trash2, Check, RefreshCw, Eye, FileText, Image as ImageIcon, Sparkles, Square, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, X, Pencil, Trash2, Check, RefreshCw, Eye, FileText, Image as ImageIcon, Sparkles, Square, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 
 interface EvidenceDoc {
@@ -36,9 +36,9 @@ export default function EvidenceAnnotatorModal({
   const [totalPages, setTotalPages] = useState<number>(1);
   const [selectedTool, setSelectedTool] = useState<'highlighter' | 'box'>('highlighter');
 
-  // Pen Size & Color Options
-  const [penColor, setPenColor] = useState<string>('rgba(250, 204, 21, 0.45)'); // Yellow
-  const [penSize, setPenSize] = useState<number>(24); // Medium 24px
+  // Solid Pen Color & Size (Mat Normal Kalem - Opak Opak)
+  const [penColor, setPenColor] = useState<string>('#eab308'); // Solid Yellow
+  const [penSize, setPenSize] = useState<number>(8); // Medium 8px solid stroke
 
   const [isSaving, setIsSaving] = useState(false);
   const [replacingFile, setReplacingFile] = useState(false);
@@ -123,7 +123,7 @@ export default function EvidenceAnnotatorModal({
     return currentY + lineHeight;
   };
 
-  // Render Image, PDF Page, or Real Word Text onto Canvas with PURE NATURAL ASPECT RATIO
+  // Render Image, PDF Page, or Real Word Text onto Canvas at Pure Natural Resolution
   const renderDocumentToCanvas = async () => {
     if (!isOpen || !doc?.url || !canvasRef.current) return;
     const canvas = canvasRef.current;
@@ -138,7 +138,7 @@ export default function EvidenceAnnotatorModal({
         img.crossOrigin = 'anonymous';
         img.src = doc.url;
         img.onload = () => {
-          // Pure Natural Image Resolution -> Absolute 100% Original Aspect Ratio!
+          // Native resolution preserves 100% natural aspect ratio without distortion
           canvas.width = img.naturalWidth || img.width;
           canvas.height = img.naturalHeight || img.height;
 
@@ -156,7 +156,6 @@ export default function EvidenceAnnotatorModal({
         const pageToRender = Math.min(Math.max(1, currentPage), pdf.numPages);
         const page = await pdf.getPage(pageToRender);
         
-        // Pure Natural PDF Resolution at 1.5x Scale -> Absolute 100% Original Aspect Ratio!
         const viewport = page.getViewport({ scale: 1.5 });
 
         canvas.width = Math.round(viewport.width);
@@ -289,7 +288,7 @@ export default function EvidenceAnnotatorModal({
     const currentPos = getCanvasPos(e);
 
     if (selectedTool === 'highlighter') {
-      // Freehand Highlighter Brush Stroke
+      // Solid Pen Stroke (Mat Normal Çizim Kalemi)
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(lastPos.x, lastPos.y);
@@ -417,13 +416,13 @@ export default function EvidenceAnnotatorModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-3 overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[95vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[96vh] flex flex-col overflow-hidden">
         
         {/* Header */}
         <div className="px-5 py-3 bg-slate-900 text-white flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 bg-amber-500/20 text-amber-400 rounded-lg">
-              <Highlighter className="w-4 h-4" />
+              <Pencil className="w-4 h-4" />
             </div>
             <div>
               <h3 className="font-bold text-sm flex items-center gap-2">
@@ -450,10 +449,10 @@ export default function EvidenceAnnotatorModal({
                 <button
                   type="button"
                   onClick={() => setSelectedTool('highlighter')}
-                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 ${selectedTool === 'highlighter' ? 'bg-yellow-400 text-slate-950 shadow-md' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'}`}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 ${selectedTool === 'highlighter' ? 'bg-amber-400 text-slate-950 shadow-md' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'}`}
                 >
-                  <Highlighter className="w-3.5 h-3.5" />
-                  Fosforlu Kalem
+                  <Pencil className="w-3.5 h-3.5" />
+                  ✏️ Çizim Kalemi
                 </button>
 
                 <button
@@ -462,36 +461,42 @@ export default function EvidenceAnnotatorModal({
                   className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 ${selectedTool === 'box' ? 'bg-red-600 text-white shadow-md' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'}`}
                 >
                   <Square className="w-3.5 h-3.5" />
-                  Kırmızı Kutucuk
+                  🔲 Kırmızı Kutucuk
                 </button>
 
-                {/* COLOR PICKER (FOR HIGHLIGHTER) */}
+                {/* SOLID COLOR PICKER */}
                 {selectedTool === 'highlighter' && (
                   <div className="flex items-center gap-1 bg-slate-900/60 px-2 py-0.5 rounded-lg border border-slate-700">
                     <span className="text-[10px] font-bold text-slate-400">Renk:</span>
                     <button
                       type="button"
-                      onClick={() => setPenColor('rgba(250, 204, 21, 0.45)')}
-                      className={`w-4 h-4 rounded-full bg-yellow-400 border ${penColor.includes('250, 204') ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                      onClick={() => setPenColor('#eab308')}
+                      className={`w-4 h-4 rounded-full bg-amber-400 border ${penColor === '#eab308' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
                       title="Sarı"
                     />
                     <button
                       type="button"
-                      onClick={() => setPenColor('rgba(34, 197, 94, 0.45)')}
-                      className={`w-4 h-4 rounded-full bg-emerald-500 border ${penColor.includes('34, 197') ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                      onClick={() => setPenColor('#22c55e')}
+                      className={`w-4 h-4 rounded-full bg-emerald-500 border ${penColor === '#22c55e' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
                       title="Yeşil"
                     />
                     <button
                       type="button"
-                      onClick={() => setPenColor('rgba(59, 130, 246, 0.45)')}
-                      className={`w-4 h-4 rounded-full bg-blue-500 border ${penColor.includes('59, 130') ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                      onClick={() => setPenColor('#2563eb')}
+                      className={`w-4 h-4 rounded-full bg-blue-600 border ${penColor === '#2563eb' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
                       title="Mavi"
                     />
                     <button
                       type="button"
-                      onClick={() => setPenColor('rgba(244, 63, 94, 0.45)')}
-                      className={`w-4 h-4 rounded-full bg-rose-500 border ${penColor.includes('244, 63') ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
-                      title="Pembe/Kırmızı"
+                      onClick={() => setPenColor('#dc2626')}
+                      className={`w-4 h-4 rounded-full bg-red-600 border ${penColor === '#dc2626' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                      title="Kırmızı"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPenColor('#0f172a')}
+                      className={`w-4 h-4 rounded-full bg-slate-900 border ${penColor === '#0f172a' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                      title="Siyah"
                     />
                   </div>
                 )}
@@ -501,22 +506,22 @@ export default function EvidenceAnnotatorModal({
                   <div className="flex items-center gap-1 bg-slate-900/60 px-2 py-0.5 rounded-lg border border-slate-700">
                     <button
                       type="button"
-                      onClick={() => setPenSize(12)}
-                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${penSize === 12 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                      onClick={() => setPenSize(4)}
+                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${penSize === 4 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
                     >
                       İnce
                     </button>
                     <button
                       type="button"
-                      onClick={() => setPenSize(24)}
-                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${penSize === 24 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                      onClick={() => setPenSize(8)}
+                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${penSize === 8 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
                     >
                       Orta
                     </button>
                     <button
                       type="button"
-                      onClick={() => setPenSize(40)}
-                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${penSize === 40 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                      onClick={() => setPenSize(14)}
+                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${penSize === 14 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
                     >
                       Kalın
                     </button>
@@ -562,11 +567,11 @@ export default function EvidenceAnnotatorModal({
           )}
         </div>
 
-        {/* Modal Body - Smooth Scrollable Container */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-100">
+        {/* Modal Body - Clean Unclipped Workspace */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-100 flex flex-col">
           
           {/* Note Input */}
-          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex-shrink-0">
             <label className="block text-xs font-bold text-slate-700 mb-1">
               Vurgu / İşaretleme Açıklama Notu:
             </label>
@@ -575,14 +580,14 @@ export default function EvidenceAnnotatorModal({
               value={highlightNote}
               onChange={e => setHighlightNote(e.target.value)}
               disabled={isReadOnly}
-              placeholder="Örn: Akreditasyon kanıtı sarı fosforlu kalemle çizilmiştir."
+              placeholder="Örn: Akreditasyon kanıtı kırmızı çizim kalemiyle işaretlenmiştir."
               className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
             />
           </div>
 
-          {/* MAIN INTERACTIVE CANVAS PREVIEW AREA WITH NATURAL ASPECT RATIO */}
-          <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b pb-1.5">
+          {/* MAIN INTERACTIVE CANVAS PREVIEW AREA - FULL VISIBILITY LIKE SCREENSHOT 1 */}
+          <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm flex-1 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b pb-1.5 flex-shrink-0">
               <span className="flex items-center gap-1.5">
                 <Pencil className="w-3.5 h-3.5 text-amber-600" />
                 {isPdf 
@@ -598,22 +603,30 @@ export default function EvidenceAnnotatorModal({
               )}
             </div>
 
-            {/* Scrollable Canvas Display Container with Pure Natural Resolution & Aspect Ratio */}
-            <div className="overflow-y-auto overflow-x-auto flex justify-center bg-slate-900/10 rounded-lg p-3 max-h-[62vh]">
+            {/* Centered Workspace Container - 100% Unclipped View like Screenshot 1 */}
+            <div className="flex-1 overflow-hidden flex items-center justify-center bg-slate-900/10 rounded-lg p-3 min-h-0">
               <canvas
                 ref={canvasRef}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 className="cursor-crosshair border border-slate-300 shadow-md rounded bg-white block"
-                style={{ maxWidth: '100%', height: 'auto', display: 'block', margin: '0 auto' }}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '66vh',
+                  width: 'auto',
+                  height: 'auto',
+                  display: 'block',
+                  margin: '0 auto',
+                  objectFit: 'contain'
+                }}
               />
             </div>
           </div>
 
           {/* DÜZELT / YENİSİYLE DEĞİŞTİR (Replace File Option) */}
           {!isReadOnly && (
-            <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm">
+            <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm flex-shrink-0">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <RefreshCw className="w-3.5 h-3.5 text-emerald-600" />
@@ -670,7 +683,7 @@ export default function EvidenceAnnotatorModal({
               className="inline-flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-md disabled:opacity-60"
             >
               {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-              {isSaving ? 'Kaydedildiği...' : 'İşaretleme & Düzeltmeyi Kaydet'}
+              {isSaving ? 'Kaydediliyor...' : 'İşaretleme & Düzeltmeyi Kaydet'}
             </button>
           )}
         </div>
