@@ -71,27 +71,34 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
   const persistData = async (updatedDocs: any[], updatedAciklama: string) => {
     if (!selectedPeriod) return;
 
-    const upsertData: Record<string, any> = {
-      alt_olcut_id: resolvedParams.id,
-      puko_asamasi: phaseId,
-      donem_id: selectedPeriod.id,
-      aciklama: updatedAciklama,
-      kanit_dosyalari: updatedDocs,
-      durum: onayDurumu || 'Taslak',
-    };
-
     if (pukoId) {
-      upsertData.id = pukoId;
-    }
+      const { error } = await supabase
+        .from('puko_degerlendirmeleri')
+        .update({
+          aciklama: updatedAciklama,
+          kanit_dosyalari: updatedDocs,
+          durum: onayDurumu || 'Taslak',
+        })
+        .eq('id', pukoId);
 
-    const { data, error } = await supabase
-      .from('puko_degerlendirmeleri')
-      .upsert(upsertData)
-      .select();
+      if (error) throw error;
+    } else {
+      const { data, error } = await supabase
+        .from('puko_degerlendirmeleri')
+        .insert({
+          alt_olcut_id: resolvedParams.id,
+          puko_asamasi: phaseId,
+          donem_id: selectedPeriod.id,
+          aciklama: updatedAciklama,
+          kanit_dosyalari: updatedDocs,
+          durum: onayDurumu || 'Taslak',
+        })
+        .select();
 
-    if (error) throw error;
-    if (data && data[0]?.id && !pukoId) {
-      setPukoId(data[0].id);
+      if (error) throw error;
+      if (data && data[0]?.id) {
+        setPukoId(data[0].id);
+      }
     }
   };
 
@@ -147,8 +154,11 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
             return updatedDoc;
           });
 
-          const updatedRow = { ...row, kanit_dosyalari: updatedRowDocs, aciklama: text };
-          rowsToUpdate.push(updatedRow);
+          rowsToUpdate.push({
+            id: row.id,
+            kanit_dosyalari: updatedRowDocs,
+            aciklama: text,
+          });
 
           if (row.puko_asamasi === phaseId) {
             setDokumanlar(updatedRowDocs);
@@ -157,12 +167,16 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
         }
       }
       
-      if (rowsToUpdate.length > 0) {
-        const { error: bulkUpdateError } = await supabase
+      for (const item of rowsToUpdate) {
+        const { error: updateError } = await supabase
           .from('puko_degerlendirmeleri')
-          .upsert(rowsToUpdate);
-        
-        if (bulkUpdateError) throw bulkUpdateError;
+          .update({
+            kanit_dosyalari: item.kanit_dosyalari,
+            aciklama: item.aciklama,
+          })
+          .eq('id', item.id);
+
+        if (updateError) throw updateError;
       }
 
       setPreviousDocsCount(currentStagePrevCount);
