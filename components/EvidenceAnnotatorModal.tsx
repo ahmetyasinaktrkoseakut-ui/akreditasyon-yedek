@@ -46,6 +46,7 @@ export default function EvidenceAnnotatorModal({
   const [replacementFile, setReplacementFile] = useState<File | null>(null);
 
   // PDF.js & Canvas Drawing State
+  const baseCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wordContainerRef = useRef<HTMLDivElement | null>(null);
   
@@ -176,11 +177,20 @@ export default function EvidenceAnnotatorModal({
         img.crossOrigin = 'anonymous';
         img.src = doc.url;
         img.onload = () => {
-          canvas.width = img.naturalWidth || img.width;
-          canvas.height = img.naturalHeight || img.height;
+          const w = img.naturalWidth || img.width;
+          const h = img.naturalHeight || img.height;
 
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const initialState = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          if (baseCanvasRef.current) {
+            baseCanvasRef.current.width = w;
+            baseCanvasRef.current.height = h;
+            const bCtx = baseCanvasRef.current.getContext('2d');
+            if (bCtx) bCtx.drawImage(img, 0, 0, w, h);
+          }
+
+          canvas.width = w;
+          canvas.height = h;
+          ctx.clearRect(0, 0, w, h);
+          const initialState = ctx.getImageData(0, 0, w, h);
           setHistory([initialState]);
           setRenderingDoc(false);
         };
@@ -194,17 +204,26 @@ export default function EvidenceAnnotatorModal({
         const page = await pdf.getPage(pageToRender);
         
         const viewport = page.getViewport({ scale: 1.8 });
+        const w = Math.round(viewport.width);
+        const h = Math.round(viewport.height);
 
-        canvas.width = Math.round(viewport.width);
-        canvas.height = Math.round(viewport.height);
+        if (baseCanvasRef.current) {
+          baseCanvasRef.current.width = w;
+          baseCanvasRef.current.height = h;
+          const bCtx = baseCanvasRef.current.getContext('2d');
+          if (bCtx) {
+            const renderContext = {
+              canvasContext: bCtx,
+              viewport: viewport,
+            };
+            await page.render(renderContext).promise;
+          }
+        }
 
-        const renderContext = {
-          canvasContext: ctx,
-          viewport: viewport,
-        };
-        await page.render(renderContext).promise;
-
-        const initialState = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        canvas.width = w;
+        canvas.height = h;
+        ctx.clearRect(0, 0, w, h);
+        const initialState = ctx.getImageData(0, 0, w, h);
         setHistory([initialState]);
         setRenderingDoc(false);
       } else {
@@ -353,7 +372,7 @@ export default function EvidenceAnnotatorModal({
       }
       // 3. Export PDF drawing embedded on target page preserving all pages using pdf-lib
       else if (isPdf && canvasRef.current && history.length > 1) {
-        oldUrlToDelete = doc.annotated_url && doc.annotated_url !== doc.url ? doc.annotated_url : undefined;
+        oldUrlToDelete = doc.url;
         const cleanName = doc.name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^/.]+$/, '');
         
         try {
@@ -386,26 +405,27 @@ export default function EvidenceAnnotatorModal({
 
           const { data: publicUrlData } = supabase.storage.from('dokumanlar').getPublicUrl(newFileName);
           finalUrl = publicUrlData.publicUrl;
-        } catch (pdfErr) {
-          console.error("PDF embedding error, falling back to PNG export:", pdfErr);
-          const canvas = canvasRef.current;
-          const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
-          if (blob) {
-            const newFileName = `isaretli_${Date.now()}_${cleanName}.png`;
-            const { error: uploadError } = await supabase.storage.from('dokumanlar').upload(newFileName, blob);
-            if (uploadError) throw uploadError;
-            const { data: publicUrlData } = supabase.storage.from('dokumanlar').getPublicUrl(newFileName);
-            finalUrl = publicUrlData.publicUrl;
-          }
+        } catch (pdfErr: any) {
+          console.error("PDF embedding error:", pdfErr);
+          alert(`PDF katmanlama hatası oluştu: ${pdfErr?.message || pdfErr}. İşlem iptal edildi.`);
+          setIsSaving(false);
+          return;
         }
       }
       // 4. Export Image canvas drawing
       else if (canvasRef.current && history.length > 1) {
-        const canvas = canvasRef.current;
-        const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+        const mergedCanvas = document.createElement('canvas');
+        mergedCanvas.width = canvasRef.current.width;
+        mergedCanvas.height = canvasRef.current.height;
+        const mCtx = mergedCanvas.getContext('2d');
+        if (mCtx) {
+          if (baseCanvasRef.current) mCtx.drawImage(baseCanvasRef.current, 0, 0);
+          mCtx.drawImage(canvasRef.current, 0, 0);
+        }
+        const blob = await new Promise<Blob | null>(resolve => mergedCanvas.toBlob(resolve, 'image/png'));
         
         if (blob) {
-          oldUrlToDelete = doc.annotated_url && doc.annotated_url !== doc.url ? doc.annotated_url : undefined;
+          oldUrlToDelete = doc.url;
           const cleanName = doc.name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^/.]+$/, '');
           const newFileName = `isaretli_${Date.now()}_${cleanName}.png`;
           const { error: uploadError } = await supabase.storage.from('dokumanlar').upload(newFileName, blob);
@@ -687,20 +707,20 @@ export default function EvidenceAnnotatorModal({
             ) : (
               /* PDF & IMAGE FULL-RESOLUTION WORKSPACE */
               <div className="overflow-y-auto overflow-x-auto bg-slate-900/10 rounded-lg p-4 min-h-[420px] max-h-[60vh] flex justify-center items-start">
-                <canvas
-                  ref={canvasRef}
-                  onMouseDown={handleMouseDown}
-                  onMouseMove={handleMouseMove}
-                  onMouseUp={handleMouseUp}
-                  className={`${isReadOnly ? 'cursor-default' : 'cursor-crosshair'} border border-slate-300 shadow-md rounded bg-white block`}
-                  style={{
-                    width: '100%',
-                    maxWidth: '850px',
-                    height: 'auto',
-                    display: 'block',
-                    margin: '0 auto'
-                  }}
-                />
+                <div className="relative" style={{ width: '100%', maxWidth: '850px' }}>
+                  <canvas
+                    ref={baseCanvasRef}
+                    className="border border-slate-300 shadow-md rounded bg-white block"
+                    style={{ width: '100%', height: 'auto', display: 'block', margin: '0 auto' }}
+                  />
+                  <canvas
+                    ref={canvasRef}
+                    onMouseDown={handleMouseDown}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    className={`absolute top-0 left-0 w-full h-full ${isReadOnly ? 'cursor-default pointer-events-none' : 'cursor-crosshair'}`}
+                  />
+                </div>
               </div>
             )}
           </div>

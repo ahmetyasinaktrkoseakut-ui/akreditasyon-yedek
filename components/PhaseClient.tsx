@@ -80,7 +80,6 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       kanit_dosyalari: updatedDocs,
       kullanici_id: user?.id,
       durum: onayDurumu || 'Taslak',
-      guncellenme_tarihi: new Date().toISOString(),
     };
 
     if (pukoId) {
@@ -104,12 +103,13 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       if (!selectedPeriod) return;
       const orderMap: Record<string, number> = { planlama: 1, uygulama: 2, kontrol: 3, onlem: 4, olgunluk: 5 };
 
-      const { data: allRows } = await supabase
+      const { data: allRows, error: fetchError } = await supabase
         .from('puko_degerlendirmeleri')
         .select('*')
         .eq('alt_olcut_id', resolvedParams.id)
         .eq('donem_id', selectedPeriod.id);
 
+      if (fetchError) throw fetchError;
       if (!allRows || allRows.length === 0) return;
 
       const sortedRows = [...allRows].sort((a, b) => (orderMap[a.puko_asamasi] || 99) - (orderMap[b.puko_asamasi] || 99));
@@ -117,6 +117,8 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       let globalCounter = 1;
       let currentStagePrevCount = 0;
       const currentOrder = orderMap[phaseId] || 1;
+
+      const rowsToUpdate = [];
 
       for (const row of sortedRows) {
         const rowOrder = orderMap[row.puko_asamasi] || 99;
@@ -134,22 +136,21 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
             const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             if (doc.evidence_id) {
               const escapedEvId = escapeRegExp(doc.evidence_id);
-              const idRegex = new RegExp(`(<a\\s+[^>]*data-evidence-id=["']${escapedEvId}["'][^>]*>)\\[Kanıt\\s+\\d+\\](<\\/a>)`, 'gi');
+              const idRegex = new RegExp(`(<a\\s+[^>]*data-evidence-id=["']${escapedEvId}["'][^>]*>)[^<]*(<\\/a>)`, 'gi');
               text = text.replace(idRegex, `$1[Kanıt ${assignedNo}]$2`);
             }
             if (doc.url) {
-              const escapedUrl = escapeRegExp(doc.url);
-              const urlRegex = new RegExp(`(<a\\s+[^>]*href=["']${escapedUrl}["'][^>]*>)\\[Kanıt\\s+\\d+\\](<\\/a>)`, 'gi');
+              const baseUrl = doc.url.split('#')[0].split('?')[0];
+              const escapedBaseUrl = escapeRegExp(baseUrl);
+              const urlRegex = new RegExp(`(<a\\s+[^>]*href=["']${escapedBaseUrl}[^"']*["'][^>]*>)[^<]*(<\\/a>)`, 'gi');
               text = text.replace(urlRegex, `$1[Kanıt ${assignedNo}]$2`);
             }
 
             return updatedDoc;
           });
 
-          await supabase
-            .from('puko_degerlendirmeleri')
-            .update({ kanit_dosyalari: updatedRowDocs, aciklama: text })
-            .eq('id', row.id);
+          const updatedRow = { ...row, kanit_dosyalari: updatedRowDocs, aciklama: text };
+          rowsToUpdate.push(updatedRow);
 
           if (row.puko_asamasi === phaseId) {
             setDokumanlar(updatedRowDocs);
@@ -157,9 +158,19 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
           }
         }
       }
+      
+      if (rowsToUpdate.length > 0) {
+        const { error: bulkUpdateError } = await supabase
+          .from('puko_degerlendirmeleri')
+          .upsert(rowsToUpdate);
+        
+        if (bulkUpdateError) throw bulkUpdateError;
+      }
+
       setPreviousDocsCount(currentStagePrevCount);
     } catch (err) {
       console.error('Reindexing error:', err);
+      throw err;
     }
   };
 
@@ -187,18 +198,24 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       setAciklama(freshAciklama);
 
       // 1. Save database FIRST
-      await persistData(newDocs, freshAciklama);
-      await reindexProjectEvidences();
+      try {
+        await persistData(newDocs, freshAciklama);
+        await reindexProjectEvidences();
+      } catch (err: any) {
+        console.error('DB Update Error:', err);
+        alert(`Veritabanı güncellenirken hata oluştu: ${err?.message || err}. Eski dosya silinmedi.`);
+        return;
+      }
 
       // 2. Delete old storage file ONLY AFTER successful DB persist
       if (oldUrlToDelete) {
         try {
           let bucketPath = '';
           if (oldUrlToDelete.includes('/dokumanlar/')) {
-            bucketPath = oldUrlToDelete.split('/dokumanlar/')[1]?.split('?')[0];
+            bucketPath = oldUrlToDelete.split('/dokumanlar/')[1]?.split('?')[0]?.split('#')[0];
           } else {
             const urlParts = oldUrlToDelete.split('/');
-            bucketPath = urlParts[urlParts.length - 1]?.split('?')[0];
+            bucketPath = urlParts[urlParts.length - 1]?.split('?')[0]?.split('#')[0];
           }
           if (bucketPath) {
             const decodedPath = decodeURIComponent(bucketPath);
@@ -476,10 +493,10 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
           if (doc.url) {
             let bucketPath = '';
             if (doc.url.includes('/dokumanlar/')) {
-              bucketPath = doc.url.split('/dokumanlar/')[1]?.split('?')[0];
+              bucketPath = doc.url.split('/dokumanlar/')[1]?.split('?')[0]?.split('#')[0];
             } else {
               const urlParts = doc.url.split('/');
-              bucketPath = urlParts[urlParts.length - 1]?.split('?')[0];
+              bucketPath = urlParts[urlParts.length - 1]?.split('?')[0]?.split('#')[0];
             }
             if (bucketPath) {
               const decodedPath = decodeURIComponent(bucketPath);
@@ -586,66 +603,72 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
     if (confirm(t('delete_confirm'))) {
       const docToRemove = dokumanlar[index];
       
-      // 1. Immediately delete physical file from Supabase Storage Bucket
+      // 1. Remove ONLY the specific evidence link matching evidence_id or URL from aciklama
+      let newAciklama = aciklama;
+      if (docToRemove) {
+        const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (docToRemove.evidence_id) {
+          const escapedEvId = escapeRegExp(docToRemove.evidence_id);
+          const idTagRegex = new RegExp(`<a\\s+[^>]*data-evidence-id=["']${escapedEvId}["'][^>]*>.*?<\\/a>`, 'gi');
+          newAciklama = newAciklama.replace(idTagRegex, '');
+        }
+        if (docToRemove.url) {
+          const escapedUrl = escapeRegExp(docToRemove.url);
+          const urlTagRegex = new RegExp(`<a\\s+[^>]*href=["']${escapedUrl}["'][^>]*>.*?<\\/a>`, 'gi');
+          newAciklama = newAciklama.replace(urlTagRegex, '');
+        }
+      }
+
+      setAciklama(newAciklama);
+
+      const newDocs = dokumanlar.filter((_, i) => i !== index);
+      setDokumanlar(newDocs);
+
+      // 2. Persist fresh DB state FIRST and trigger gapless reindexing across all stages
+      try {
+        await persistData(newDocs, newAciklama);
+        await reindexProjectEvidences();
+      } catch (err: any) {
+        console.error('DB Update Error:', err);
+        alert(`Veritabanı güncellenirken hata oluştu: ${err?.message || err}. Dosya silinmedi.`);
+        return;
+      }
+
+      // 3. Delete physical files from Storage ONLY AFTER DB persistence and reindexing succeeds
       if (docToRemove?.url) {
         try {
           let bucketPath = '';
           if (docToRemove.url.includes('/dokumanlar/')) {
-            bucketPath = docToRemove.url.split('/dokumanlar/')[1]?.split('?')[0];
+            bucketPath = docToRemove.url.split('/dokumanlar/')[1]?.split('?')[0]?.split('#')[0];
           } else {
             const urlParts = docToRemove.url.split('/');
-            bucketPath = urlParts[urlParts.length - 1]?.split('?')[0];
+            bucketPath = urlParts[urlParts.length - 1]?.split('?')[0]?.split('#')[0];
           }
           if (bucketPath) {
             const decodedPath = decodeURIComponent(bucketPath);
             const { error: remErr } = await supabase.storage.from('dokumanlar').remove([decodedPath]);
-            if (remErr) console.error('Storage removal error:', remErr);
+            if (remErr) alert(`Uyarı: Depolama dosyası silinirken uyarı alındı: ${remErr.message}`);
           }
 
-          // Delete annotated copy if present
           if (docToRemove.annotated_url && docToRemove.annotated_url !== docToRemove.url) {
             let annoPath = '';
             if (docToRemove.annotated_url.includes('/dokumanlar/')) {
-              annoPath = docToRemove.annotated_url.split('/dokumanlar/')[1]?.split('?')[0];
+              annoPath = docToRemove.annotated_url.split('/dokumanlar/')[1]?.split('?')[0]?.split('#')[0];
             } else {
               const urlParts = docToRemove.annotated_url.split('/');
-              annoPath = urlParts[urlParts.length - 1]?.split('?')[0];
+              annoPath = urlParts[urlParts.length - 1]?.split('?')[0]?.split('#')[0];
             }
             if (annoPath) {
               const decodedAnnoPath = decodeURIComponent(annoPath);
               const { error: annoRemErr } = await supabase.storage.from('dokumanlar').remove([decodedAnnoPath]);
-              if (annoRemErr) console.error('Annotated storage removal error:', annoRemErr);
+              if (annoRemErr) alert(`Uyarı: İşaretli depolama dosyası silinirken uyarı alındı: ${annoRemErr.message}`);
             }
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error('Storage deletion error:', err);
+          alert(`Depolama temizleme hatası: ${err?.message || err}`);
         }
       }
-      
-      // 2. Automatically remove inline evidence links & tags from text editor
-      let newAciklama = aciklama;
-      
-      if (docToRemove?.url) {
-        const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const escapedUrl = escapeRegExp(docToRemove.url);
-        
-        // Remove <a ...href="URL"...>...</a>
-        const urlRegex = new RegExp(`<a\\s+[^>]*href=["']${escapedUrl}["'][^>]*>.*?<\\/a>`, 'gi');
-        newAciklama = newAciklama.replace(urlRegex, '');
-      }
-
-      // Remove any leftover <a ...>[Kanıt ...]</a>
-      const tagRegex = new RegExp(`<a\\s+[^>]*>\\[Kanıt\\s+\\d+\\]<\\/a>`, 'gi');
-      newAciklama = newAciklama.replace(tagRegex, '');
-
-      setAciklama(newAciklama);
-
-      // 3. Remove document from state
-      const newDocs = dokumanlar.filter((_, i) => i !== index);
-      setDokumanlar(newDocs);
-
-      // Automatically persist fresh state directly to Supabase database!
-      await persistData(newDocs, newAciklama);
     }
   };
 
@@ -740,7 +763,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
                       <div className="flex-1 overflow-hidden">
                         <div className="flex items-center gap-1.5 mb-1">
                           <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-bold rounded border border-orange-200">
-                            [Kanıt {previousDocsCount + idx + 1}]
+                            {doc.evidence_no ? `[Kanıt ${doc.evidence_no}]` : 'Numaralandırılıyor...'}
                           </span>
                           {doc.is_annotated && (
                             <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded">
