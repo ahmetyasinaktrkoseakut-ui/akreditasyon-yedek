@@ -172,7 +172,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
 
             if (!replaced) {
               let matchCount = 0;
-              text = text.replace(/(<a\s+[^>]*>)\s*\[Kanıt\s+\d+\]\s*(<\/a>)/gi, (fullMatch, p1, p2) => {
+              text = text.replace(/(<a\s+[^>]*>)\s*\[Kanıt\s+\d+\]\s*(<\/a>)/gi, (fullMatch: string, p1: string, p2: string) => {
                 if (matchCount === docIdx) {
                   matchCount++;
                   replaced = true;
