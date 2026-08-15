@@ -64,8 +64,70 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
   const [annotatorReadOnly, setAnnotatorReadOnly] = useState(false);
   const [selectedDocForAnnotation, setSelectedDocForAnnotation] = useState<{ doc: any; index: number } | null>(null);
 
-  const handleInsertEvidenceAtCursor = (doc: any, idx: number) => {
-    const kanitNo = idx + 1;
+  // Direct fresh database persistence to prevent React stale closure bugs
+  const persistData = async (updatedDocs: any[], updatedAciklama: string) => {
+    try {
+      if (!selectedPeriod) return;
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const upsertData: Record<string, any> = {
+        alt_olcut_id: resolvedParams.id,
+        puko_asamasi: phaseId,
+        donem_id: selectedPeriod.id,
+        aciklama: updatedAciklama,
+        kanit_dosyalari: updatedDocs,
+        kullanici_id: user?.id,
+        guncellenme_tarihi: new Date().toISOString(),
+      };
+
+      if (pukoId) {
+        upsertData.id = pukoId;
+      }
+
+      const { data, error } = await supabase
+        .from('puko_degerlendirmeleri')
+        .upsert(upsertData)
+        .select();
+
+      if (error) throw error;
+      if (data && data[0]?.id && !pukoId) {
+        setPukoId(data[0].id);
+      }
+    } catch (err) {
+      console.error("Auto persist error:", err);
+    }
+  };
+
+  // Calculate project-wide global continuous evidence number across PUKO stages
+  const calculateGlobalEvidenceNumber = async (idxInCurrentStage: number) => {
+    try {
+      const orderMap: Record<string, number> = { planlama: 1, uygulama: 2, kontrol: 3, onlem: 4, olgunluk: 5 };
+      const currentOrder = orderMap[phaseId] || 1;
+
+      const { data: allPukoRows } = await supabase
+        .from('puko_degerlendirmeleri')
+        .select('puko_asamasi, kanit_dosyalari')
+        .eq('alt_olcut_id', resolvedParams.id)
+        .eq('donem_id', selectedPeriod?.id);
+
+      let previousDocsCount = 0;
+      if (allPukoRows) {
+        allPukoRows.forEach((row: any) => {
+          const rowOrder = orderMap[row.puko_asamasi] || 99;
+          if (rowOrder < currentOrder && Array.isArray(row.kanit_dosyalari)) {
+            previousDocsCount += row.kanit_dosyalari.length;
+          }
+        });
+      }
+
+      return previousDocsCount + idxInCurrentStage + 1;
+    } catch (err) {
+      return idxInCurrentStage + 1;
+    }
+  };
+
+  const handleInsertEvidenceAtCursor = async (doc: any, idx: number) => {
+    const kanitNo = await calculateGlobalEvidenceNumber(idx);
     const tagHtml = `<a href="${doc.url}" target="_blank" rel="noopener noreferrer" style="color: #ea580c; font-weight: bold; text-decoration: underline; margin: 0 4px;">[Kanıt ${kanitNo}]</a>&nbsp;`;
     if (editorRef.current) {
       editorRef.current.insertContent(tagHtml);
@@ -85,15 +147,17 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       newDocs[selectedDocForAnnotation.index] = updatedDoc;
       setDokumanlar(newDocs);
 
+      let freshAciklama = aciklama;
       // Automatically update inline evidence URLs in aciklama text
       if (oldDoc?.url && updatedDoc?.url && oldDoc.url !== updatedDoc.url) {
         const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const escapedOldUrl = escapeRegExp(oldDoc.url);
         const urlRegex = new RegExp(escapedOldUrl, 'gi');
-        setAciklama(prev => prev.replace(urlRegex, updatedDoc.url));
+        freshAciklama = freshAciklama.replace(urlRegex, updatedDoc.url);
+        setAciklama(freshAciklama);
       }
 
-      // Delete old file immediately from Supabase Storage
+      // Delete old file immediately from Supabase Storage with explicit error handling
       if (oldUrlToDelete) {
         try {
           let bucketPath = '';
@@ -105,17 +169,18 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
           }
           if (bucketPath) {
             const decodedPath = decodeURIComponent(bucketPath);
-            await supabase.storage.from('dokumanlar').remove([decodedPath]);
+            const { error: remErr } = await supabase.storage.from('dokumanlar').remove([decodedPath]);
+            if (remErr) {
+              console.error('Storage removal error:', remErr);
+            }
           }
         } catch (err) {
           console.error('Old file deletion error:', err);
         }
       }
 
-      // Automatically persist to Supabase database!
-      setTimeout(() => {
-        handleSave();
-      }, 100);
+      // Automatically persist FRESH state directly to Supabase database!
+      await persistData(newDocs, freshAciklama);
     }
   };
 
@@ -432,14 +497,12 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
         size: Math.round(file.size / 1024)
       };
 
-      setDokumanlar(prev => {
-        const updated = [...prev, newDoc];
-        const newIdx = updated.length - 1;
-        setTimeout(() => {
-          handleInsertEvidenceAtCursor(newDoc, newIdx);
-        }, 100);
-        return updated;
-      });
+      const updatedDocs = [...dokumanlar, newDoc];
+      const newIdx = updatedDocs.length - 1;
+      setDokumanlar(updatedDocs);
+      
+      await handleInsertEvidenceAtCursor(newDoc, newIdx);
+      await persistData(updatedDocs, aciklama);
 
     } catch (error: any) {
       console.error('File upload error:', error);
@@ -467,7 +530,8 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
           }
           if (bucketPath) {
             const decodedPath = decodeURIComponent(bucketPath);
-            await supabase.storage.from('dokumanlar').remove([decodedPath]);
+            const { error: remErr } = await supabase.storage.from('dokumanlar').remove([decodedPath]);
+            if (remErr) console.error('Storage removal error:', remErr);
           }
 
           // Delete annotated copy if present
@@ -481,7 +545,8 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
             }
             if (annoPath) {
               const decodedAnnoPath = decodeURIComponent(annoPath);
-              await supabase.storage.from('dokumanlar').remove([decodedAnnoPath]);
+              const { error: annoRemErr } = await supabase.storage.from('dokumanlar').remove([decodedAnnoPath]);
+              if (annoRemErr) console.error('Annotated storage removal error:', annoRemErr);
             }
           }
         } catch (err) {
@@ -490,7 +555,6 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       }
       
       // 2. Automatically remove inline evidence links & tags from text editor
-      const kanitNo = index + 1;
       let newAciklama = aciklama;
       
       if (docToRemove?.url) {
@@ -502,13 +566,9 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
         newAciklama = newAciklama.replace(urlRegex, '');
       }
 
-      // Remove <a ...>[Kanıt {kanitNo}]</a>
-      const tagRegex = new RegExp(`<a\\s+[^>]*>\\[Kanıt\\s+${kanitNo}\\]<\\/a>`, 'gi');
+      // Remove any leftover <a ...>[Kanıt ...]</a>
+      const tagRegex = new RegExp(`<a\\s+[^>]*>\\[Kanıt\\s+\\d+\\]<\\/a>`, 'gi');
       newAciklama = newAciklama.replace(tagRegex, '');
-
-      // Remove plain text [Kanıt {kanitNo}]
-      const plainTagRegex = new RegExp(`\\[Kanıt\\s+${kanitNo}\\]`, 'gi');
-      newAciklama = newAciklama.replace(plainTagRegex, '');
 
       setAciklama(newAciklama);
 
@@ -516,10 +576,8 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       const newDocs = dokumanlar.filter((_, i) => i !== index);
       setDokumanlar(newDocs);
 
-      // Automatically persist to Supabase database!
-      setTimeout(() => {
-        handleSave();
-      }, 100);
+      // Automatically persist fresh state directly to Supabase database!
+      await persistData(newDocs, newAciklama);
     }
   };
 
