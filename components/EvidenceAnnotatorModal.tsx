@@ -82,7 +82,7 @@ export default function EvidenceAnnotatorModal({
       setPdfLibLoaded(true);
     }
 
-    // Load Mammoth.js for rich Word HTML conversion (tables, logos, styling)
+    // Load Mammoth.js for rich Word HTML conversion
     if (!(window as any).mammoth) {
       const mScript = document.createElement('script');
       mScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js';
@@ -94,7 +94,7 @@ export default function EvidenceAnnotatorModal({
       setMammothLoaded(true);
     }
 
-    // Load html2canvas for snapshotting Word document HTML + Drawing
+    // Load html2canvas
     if (!(window as any).html2canvas) {
       const hScript = document.createElement('script');
       hScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
@@ -119,7 +119,7 @@ export default function EvidenceAnnotatorModal({
     }
   }, [doc]);
 
-  // Render Word Document using Mammoth.js to preserve logos, tables, borders & layout
+  // Render Word Document using Mammoth.js
   const renderWordDocument = async () => {
     if (!isOpen || !doc?.url || !isOfficeDoc) return;
     setRenderingDoc(true);
@@ -138,7 +138,7 @@ export default function EvidenceAnnotatorModal({
     }
   };
 
-  // Setup Word Canvas Overlay after Mammoth HTML renders
+  // Setup Word Canvas Overlay
   useEffect(() => {
     if (isOfficeDoc && wordHtml && wordContainerRef.current && canvasRef.current) {
       const container = wordContainerRef.current;
@@ -155,7 +155,7 @@ export default function EvidenceAnnotatorModal({
     }
   }, [wordHtml, isOfficeDoc]);
 
-  // Render Image or PDF Page onto Canvas at Pure Natural Resolution
+  // Render Image or PDF Page onto Canvas
   const renderDocumentToCanvas = async () => {
     if (!isOpen || !doc?.url || !canvasRef.current) return;
     if (isOfficeDoc) {
@@ -401,12 +401,12 @@ export default function EvidenceAnnotatorModal({
         {/* Header */}
         <div className="px-5 py-3 bg-slate-900 text-white flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 bg-amber-500/20 text-amber-400 rounded-lg">
-              <Pencil className="w-4 h-4" />
+            <div className={`p-1.5 rounded-lg ${isReadOnly ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400'}`}>
+              {isReadOnly ? <Eye className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
             </div>
             <div>
               <h3 className="font-bold text-sm flex items-center gap-2">
-                Kanıt İşaretleme & Düzenleme Editörü
+                {isReadOnly ? '📄 Kanıt Dokümanı Görüntüleyici' : '✏️ Kanıt İşaretleme & Düzenleme Editörü'}
               </h3>
               <p className="text-[11px] text-slate-300 truncate max-w-md" title={doc.name}>
                 {doc.name}
@@ -418,163 +418,172 @@ export default function EvidenceAnnotatorModal({
           </button>
         </div>
 
-        {/* TOP DRAWING & NAVIGATION TOOLBAR */}
-        <div className="px-5 py-2.5 bg-slate-800 text-white flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 flex-shrink-0">
-          
-          {/* Drawing Tools & Size/Color Selectors */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="font-bold text-slate-400 uppercase text-[10px]">Araçlar:</span>
-            {!isReadOnly && (
-              <>
+        {/* TOP DRAWING & NAVIGATION TOOLBAR - HIDE DRAWING TOOLS WHEN READONLY */}
+        {(!isReadOnly || isPdf) && (
+          <div className="px-5 py-2.5 bg-slate-800 text-white flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 flex-shrink-0">
+            
+            {/* Drawing Tools & Size/Color Selectors (Only shown in Edit Mode) */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {!isReadOnly ? (
+                <>
+                  <span className="font-bold text-slate-400 uppercase text-[10px]">Araçlar:</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTool('highlighter')}
+                    className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 ${selectedTool === 'highlighter' ? 'bg-amber-400 text-slate-950 shadow-md' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'}`}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    ✏️ Çizim Kalemi
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTool('box')}
+                    className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 ${selectedTool === 'box' ? 'bg-red-600 text-white shadow-md' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'}`}
+                  >
+                    <Square className="w-3.5 h-3.5" />
+                    🔲 Kırmızı Kutucuk
+                  </button>
+
+                  {/* SOLID COLOR PICKER */}
+                  {selectedTool === 'highlighter' && (
+                    <div className="flex items-center gap-1 bg-slate-900/60 px-2 py-0.5 rounded-lg border border-slate-700">
+                      <span className="text-[10px] font-bold text-slate-400">Renk:</span>
+                      <button
+                        type="button"
+                        onClick={() => setPenColor('#eab308')}
+                        className={`w-4 h-4 rounded-full bg-amber-400 border ${penColor === '#eab308' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                        title="Sarı"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPenColor('#22c55e')}
+                        className={`w-4 h-4 rounded-full bg-emerald-500 border ${penColor === '#22c55e' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                        title="Yeşil"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPenColor('#2563eb')}
+                        className={`w-4 h-4 rounded-full bg-blue-600 border ${penColor === '#2563eb' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                        title="Mavi"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPenColor('#dc2626')}
+                        className={`w-4 h-4 rounded-full bg-red-600 border ${penColor === '#dc2626' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                        title="Kırmızı"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPenColor('#0f172a')}
+                        className={`w-4 h-4 rounded-full bg-slate-900 border ${penColor === '#0f172a' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
+                        title="Siyah"
+                      />
+                    </div>
+                  )}
+
+                  {/* BRUSH SIZE PICKER */}
+                  {selectedTool === 'highlighter' && (
+                    <div className="flex items-center gap-1 bg-slate-900/60 px-2 py-0.5 rounded-lg border border-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => setPenSize(4)}
+                        className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${penSize === 4 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                      >
+                        İnce
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPenSize(8)}
+                        className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${penSize === 8 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                      >
+                        Orta
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPenSize(14)}
+                        className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${penSize === 14 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                      >
+                        Kalın
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleUndo}
+                    disabled={history.length <= 1}
+                    className="px-2.5 py-1 text-xs font-bold bg-slate-700 text-slate-200 hover:bg-slate-600 rounded-lg disabled:opacity-40 flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Geri Al
+                  </button>
+                </>
+              ) : (
+                <span className="font-bold text-slate-300 text-xs">🔍 Görüntüleme Modu (Salt Okunur)</span>
+              )}
+            </div>
+
+            {/* PDF Page Navigation */}
+            {isPdf && (
+              <div className="flex items-center gap-1.5 bg-slate-900/60 px-2.5 py-0.5 rounded-lg border border-slate-700">
                 <button
                   type="button"
-                  onClick={() => setSelectedTool('highlighter')}
-                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 ${selectedTool === 'highlighter' ? 'bg-amber-400 text-slate-950 shadow-md' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'}`}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage <= 1}
+                  className="p-0.5 text-slate-300 hover:text-white disabled:opacity-40"
                 >
-                  <Pencil className="w-3.5 h-3.5" />
-                  ✏️ Çizim Kalemi
+                  <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
-
+                <span className="text-[11px] font-bold text-amber-400 whitespace-nowrap">
+                  Sayfa {currentPage} / {totalPages}
+                </span>
                 <button
                   type="button"
-                  onClick={() => setSelectedTool('box')}
-                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 ${selectedTool === 'box' ? 'bg-red-600 text-white shadow-md' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'}`}
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="p-0.5 text-slate-300 hover:text-white disabled:opacity-40"
                 >
-                  <Square className="w-3.5 h-3.5" />
-                  🔲 Kırmızı Kutucuk
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </button>
-
-                {/* SOLID COLOR PICKER */}
-                {selectedTool === 'highlighter' && (
-                  <div className="flex items-center gap-1 bg-slate-900/60 px-2 py-0.5 rounded-lg border border-slate-700">
-                    <span className="text-[10px] font-bold text-slate-400">Renk:</span>
-                    <button
-                      type="button"
-                      onClick={() => setPenColor('#eab308')}
-                      className={`w-4 h-4 rounded-full bg-amber-400 border ${penColor === '#eab308' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
-                      title="Sarı"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setPenColor('#22c55e')}
-                      className={`w-4 h-4 rounded-full bg-emerald-500 border ${penColor === '#22c55e' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
-                      title="Yeşil"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setPenColor('#2563eb')}
-                      className={`w-4 h-4 rounded-full bg-blue-600 border ${penColor === '#2563eb' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
-                      title="Mavi"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setPenColor('#dc2626')}
-                      className={`w-4 h-4 rounded-full bg-red-600 border ${penColor === '#dc2626' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
-                      title="Kırmızı"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setPenColor('#0f172a')}
-                      className={`w-4 h-4 rounded-full bg-slate-900 border ${penColor === '#0f172a' ? 'border-white scale-110' : 'border-transparent opacity-70'}`}
-                      title="Siyah"
-                    />
-                  </div>
-                )}
-
-                {/* BRUSH SIZE PICKER */}
-                {selectedTool === 'highlighter' && (
-                  <div className="flex items-center gap-1 bg-slate-900/60 px-2 py-0.5 rounded-lg border border-slate-700">
-                    <button
-                      type="button"
-                      onClick={() => setPenSize(4)}
-                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${penSize === 4 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
-                    >
-                      İnce
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPenSize(8)}
-                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${penSize === 8 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
-                    >
-                      Orta
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPenSize(14)}
-                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${penSize === 14 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
-                    >
-                      Kalın
-                    </button>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleUndo}
-                  disabled={history.length <= 1}
-                  className="px-2.5 py-1 text-xs font-bold bg-slate-700 text-slate-200 hover:bg-slate-600 rounded-lg disabled:opacity-40 flex items-center gap-1"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  Geri Al
-                </button>
-              </>
+              </div>
             )}
           </div>
-
-          {/* PDF Page Navigation */}
-          {isPdf && (
-            <div className="flex items-center gap-1.5 bg-slate-900/60 px-2.5 py-0.5 rounded-lg border border-slate-700">
-              <button
-                type="button"
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage <= 1}
-                className="p-0.5 text-slate-300 hover:text-white disabled:opacity-40"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-              <span className="text-[11px] font-bold text-amber-400 whitespace-nowrap">
-                Sayfa {currentPage} / {totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                disabled={currentPage >= totalPages}
-                className="p-0.5 text-slate-300 hover:text-white disabled:opacity-40"
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-100 flex flex-col">
           
-          {/* Note Input */}
-          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex-shrink-0">
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Vurgu / İşaretleme Açıklama Notu:
-            </label>
-            <input
-              type="text"
-              value={highlightNote}
-              onChange={e => setHighlightNote(e.target.value)}
-              disabled={isReadOnly}
-              placeholder="Örn: Akreditasyon kanıtı kırmızı çizim kalemiyle işaretlenmiştir."
-              className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
-            />
-          </div>
+          {/* Note Input (Only shown in Edit Mode or if Note exists) */}
+          {!isReadOnly ? (
+            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex-shrink-0">
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Vurgu / İşaretleme Açıklama Notu:
+              </label>
+              <input
+                type="text"
+                value={highlightNote}
+                onChange={e => setHighlightNote(e.target.value)}
+                placeholder="Örn: Akreditasyon kanıtı kırmızı çizim kalemiyle işaretlenmiştir."
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
+              />
+            </div>
+          ) : doc.highlight_note ? (
+            <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl shadow-sm text-xs font-medium text-amber-900 flex items-center gap-2 flex-shrink-0">
+              <span>📌 <strong>İşaretleme Notu:</strong> {doc.highlight_note}</span>
+            </div>
+          ) : null}
 
           {/* MAIN INTERACTIVE CANVAS PREVIEW AREA */}
           <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm flex-1 flex flex-col">
             <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b pb-1.5 flex-shrink-0">
               <span className="flex items-center gap-1.5">
-                <Pencil className="w-3.5 h-3.5 text-amber-600" />
+                {isReadOnly ? <Eye className="w-3.5 h-3.5 text-blue-600" /> : <Pencil className="w-3.5 h-3.5 text-amber-600" />}
                 {isPdf 
-                  ? `PDF Sayfa ${currentPage} Çizim Tuvali:` 
+                  ? `PDF Sayfa ${currentPage} Görünümü:` 
                   : isOfficeDoc 
-                  ? 'Word Belgesi Orijinal Görünüm & Çizim Tuvali:' 
-                  : 'Görsel Çizim & İşaretleme Tuvali:'}
+                  ? 'Word Belgesi Orijinal Görünümü:' 
+                  : 'Görsel Doküman Görünümü:'}
               </span>
               {renderingDoc && (
                 <span className="text-amber-600 flex items-center gap-1 text-[11px]">
@@ -614,7 +623,7 @@ export default function EvidenceAnnotatorModal({
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}
-                    className="absolute inset-0 cursor-crosshair z-10 w-full h-full"
+                    className={`absolute inset-0 z-10 w-full h-full ${isReadOnly ? 'pointer-events-none' : 'cursor-crosshair'}`}
                   />
                 </div>
               </div>
@@ -626,7 +635,7 @@ export default function EvidenceAnnotatorModal({
                   onMouseDown={handleMouseDown}
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
-                  className="cursor-crosshair border border-slate-300 shadow-md rounded bg-white block"
+                  className={`${isReadOnly ? 'cursor-default' : 'cursor-crosshair'} border border-slate-300 shadow-md rounded bg-white block`}
                   style={{
                     width: '100%',
                     maxWidth: '850px',
@@ -639,7 +648,7 @@ export default function EvidenceAnnotatorModal({
             )}
           </div>
 
-          {/* DÜZELT / YENİSİYLE DEĞİŞTİR (Replace File Option) */}
+          {/* DÜZELT / YENİSİYLE DEĞİŞTİR (Only shown in Edit Mode) */}
           {!isReadOnly && (
             <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm flex-shrink-0">
               <div className="flex items-center justify-between">
@@ -685,9 +694,9 @@ export default function EvidenceAnnotatorModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+            className={`px-4 py-1.5 text-xs font-semibold rounded-xl transition-colors ${isReadOnly ? 'bg-slate-800 hover:bg-slate-900 text-white font-bold' : 'text-slate-600 hover:bg-slate-100'}`}
           >
-            Kapat / İptal
+            {isReadOnly ? 'Kapat & İncelemeyi Tamamla' : 'Kapat / İptal'}
           </button>
 
           {!isReadOnly && (
