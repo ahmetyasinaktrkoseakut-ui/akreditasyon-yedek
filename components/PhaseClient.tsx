@@ -102,10 +102,61 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
     }
   };
 
+  // DOMParser helper to cleanly update inline evidence links and data-evidence-id attributes
+  const updateHtmlEvidenceLinks = (html: string, docs: any[]) => {
+    if (!html || typeof window === 'undefined' || !window.DOMParser) return html;
+    try {
+      const parser = new DOMParser();
+      const docParsed = parser.parseFromString(html, 'text/html');
+
+      docs.forEach((d: any) => {
+        if (!d.evidence_id && !d.url) return;
+
+        const evNo = d.evidence_no;
+        const targetText = `[Kanıt ${evNo}]`;
+
+        let anchor: HTMLAnchorElement | null = null;
+
+        // 1. Primary: Find anchor by data-evidence-id
+        if (d.evidence_id) {
+          anchor = docParsed.querySelector(`a[data-evidence-id="${d.evidence_id}"]`);
+        }
+
+        // 2. Secondary: Match by normalized href (stripping query & #page hash)
+        if (!anchor && d.url) {
+          const normalizeUrl = (u: string) => u.split('#')[0].split('?')[0];
+          const targetBaseUrl = normalizeUrl(d.url);
+          const targetAnnoBaseUrl = d.annotated_url ? normalizeUrl(d.annotated_url) : null;
+
+          const allAnchors = Array.from(docParsed.querySelectorAll('a'));
+          anchor = allAnchors.find(a => {
+            const href = a.getAttribute('href');
+            if (!href) return false;
+            const normHref = normalizeUrl(href);
+            return normHref === targetBaseUrl || (targetAnnoBaseUrl && normHref === targetAnnoBaseUrl);
+          }) || null;
+        }
+
+        // 3. Update textContent & attach data-evidence-id attribute if missing
+        if (anchor) {
+          if (d.evidence_id && !anchor.getAttribute('data-evidence-id')) {
+            anchor.setAttribute('data-evidence-id', d.evidence_id);
+          }
+          anchor.textContent = targetText;
+        }
+      });
+
+      return docParsed.body.innerHTML;
+    } catch (err) {
+      console.error('DOMParser HTML update error:', err);
+      return html;
+    }
+  };
+
   // Re-index all PUKO stage evidences sequentially 1..N across all stages
   const reindexProjectEvidences = async () => {
     try {
-      if (!selectedPeriod) return;
+      if (!selectedPeriod) return [];
       const orderMap: Record<string, number> = { planlama: 1, uygulama: 2, kontrol: 3, onlem: 4, olgunluk: 5 };
 
       const { data: allRows, error: fetchError } = await supabase
@@ -115,7 +166,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
         .eq('donem_id', selectedPeriod.id);
 
       if (fetchError) throw fetchError;
-      if (!allRows || allRows.length === 0) return;
+      if (!allRows || allRows.length === 0) return [];
 
       const sortedRows = [...allRows].sort((a, b) => (orderMap[a.puko_asamasi] || 99) - (orderMap[b.puko_asamasi] || 99));
 
@@ -123,7 +174,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       let currentStagePrevCount = 0;
       const currentOrder = orderMap[phaseId] || 1;
 
-      const rowsToUpdate = [];
+      const rowsToUpdate: any[] = [];
 
       for (const row of sortedRows) {
         const rowOrder = orderMap[row.puko_asamasi] || 99;
@@ -132,73 +183,25 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
         }
 
         if (Array.isArray(row.kanit_dosyalari) && row.kanit_dosyalari.length > 0) {
-          let text = row.aciklama || '';
-          const updatedRowDocs = row.kanit_dosyalari.map((doc: any, docIdx: number) => {
+          const updatedRowDocs = row.kanit_dosyalari.map((doc: any) => {
             const evId = doc.evidence_id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ev_${Math.random().toString(36).substring(2, 9)}`);
             const assignedNo = globalCounter++;
-            const updatedDoc = { ...doc, evidence_id: evId, evidence_no: assignedNo };
-
-            const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            let replaced = false;
-
-            if (doc.evidence_id) {
-              const escapedEvId = escapeRegExp(doc.evidence_id);
-              const idRegex = new RegExp(`(<a\\s+[^>]*data-evidence-id=["']${escapedEvId}["'][^>]*>)[^<]*(<\\/a>)`, 'gi');
-              if (idRegex.test(text)) {
-                text = text.replace(idRegex, `$1[Kanıt ${assignedNo}]$2`);
-                replaced = true;
-              }
-            }
-
-            if (!replaced && doc.url) {
-              const baseUrl = doc.url.split('#')[0].split('?')[0];
-              const escapedBaseUrl = escapeRegExp(baseUrl);
-              const urlRegex = new RegExp(`(<a\\s+[^>]*href=["']${escapedBaseUrl}[^"']*["'][^>]*>)[^<]*(<\\/a>)`, 'gi');
-              if (urlRegex.test(text)) {
-                text = text.replace(urlRegex, `$1[Kanıt ${assignedNo}]$2`);
-                replaced = true;
-              }
-            }
-
-            if (!replaced && doc.annotated_url) {
-              const baseAnnoUrl = doc.annotated_url.split('#')[0].split('?')[0];
-              const escapedAnnoUrl = escapeRegExp(baseAnnoUrl);
-              const annoRegex = new RegExp(`(<a\\s+[^>]*href=["']${escapedAnnoUrl}[^"']*["'][^>]*>)[^<]*(<\\/a>)`, 'gi');
-              if (annoRegex.test(text)) {
-                text = text.replace(annoRegex, `$1[Kanıt ${assignedNo}]$2`);
-                replaced = true;
-              }
-            }
-
-            if (!replaced) {
-              let matchCount = 0;
-              text = text.replace(/(<a\s+[^>]*>)\s*\[Kanıt\s+\d+\]\s*(<\/a>)/gi, (fullMatch: string, p1: string, p2: string) => {
-                if (matchCount === docIdx) {
-                  matchCount++;
-                  replaced = true;
-                  return `${p1}[Kanıt ${assignedNo}]${p2}`;
-                }
-                matchCount++;
-                return fullMatch;
-              });
-            }
-
-            return updatedDoc;
+            return { ...doc, evidence_id: evId, evidence_no: assignedNo };
           });
+
+          // Use DOMParser to update HTML link texts cleanly
+          const updatedHtml = updateHtmlEvidenceLinks(row.aciklama || '', updatedRowDocs);
 
           rowsToUpdate.push({
             id: row.id,
+            puko_asamasi: row.puko_asamasi,
             kanit_dosyalari: updatedRowDocs,
-            aciklama: text,
+            aciklama: updatedHtml,
           });
-
-          if (row.puko_asamasi === phaseId) {
-            setDokumanlar(updatedRowDocs);
-            setAciklama(text);
-          }
         }
       }
-      
+
+      // Persist all updated rows to Supabase
       for (const item of rowsToUpdate) {
         const { error: updateError } = await supabase
           .from('puko_degerlendirmeleri')
@@ -212,6 +215,16 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       }
 
       setPreviousDocsCount(currentStagePrevCount);
+
+      // Force update live React state and TipTap editor instance for active stage
+      const currentActiveRow = rowsToUpdate.find(r => r.puko_asamasi === phaseId);
+      if (currentActiveRow) {
+        setDokumanlar(currentActiveRow.kanit_dosyalari);
+        setAciklama(currentActiveRow.aciklama);
+        editorRef.current?.setHTML(currentActiveRow.aciklama);
+      }
+
+      return rowsToUpdate;
     } catch (err) {
       console.error('Reindexing error:', err);
       throw err;

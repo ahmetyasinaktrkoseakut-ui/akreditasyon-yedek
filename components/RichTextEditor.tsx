@@ -15,6 +15,7 @@ export interface RichTextEditorRef {
   insertContent: (content: string) => void;
   getHTML: () => string;
   insertContentAndGetHTML: (content: string) => string;
+  setHTML: (html: string) => void;
 }
 
 const CustomLink = Link.extend({
@@ -73,6 +74,11 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
           return editor.getHTML();
         }
         return '';
+      },
+      setHTML: (html: string) => {
+        if (editor) {
+          editor.commands.setContent(html);
+        }
       },
     }));
 

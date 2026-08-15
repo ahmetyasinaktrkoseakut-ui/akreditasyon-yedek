@@ -269,18 +269,45 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
                 ev = { ...k, no: localEvidenceCounter++ };
                 birlesikKanitlar.push(ev);
               }
-              // Re-number inline evidence link text to match report-wide global ev.no
-              const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              if (k.evidence_id) {
-                const escapedEvId = escapeRegExp(k.evidence_id);
-                const idRegex = new RegExp(`(<a\\s+[^>]*data-evidence-id=["']${escapedEvId}["'][^>]*>)[^<]*(<\\/a>)`, 'gi');
-                phaseText = phaseText.replace(idRegex, `$1[Kanıt ${ev.no}]$2`);
-              }
-              if (k.url) {
-                const baseUrl = k.url.split('#')[0].split('?')[0];
-                const escapedBaseUrl = escapeRegExp(baseUrl);
-                const linkTextRegex = new RegExp(`(<a\\s+[^>]*href=["']${escapedBaseUrl}[^"']*["'][^>]*>)[^<]*(<\\/a>)`, 'gi');
-                phaseText = phaseText.replace(linkTextRegex, `$1[Kanıt ${ev.no}]$2`);
+              // Re-number inline evidence link text to match report-wide global ev.no using DOMParser
+              if (typeof window !== 'undefined' && window.DOMParser) {
+                try {
+                  const parser = new DOMParser();
+                  const docParsed = parser.parseFromString(phaseText, 'text/html');
+
+                  let anchor: HTMLAnchorElement | null = null;
+
+                  // 1. Primary: Find anchor by data-evidence-id
+                  if (k.evidence_id) {
+                    anchor = docParsed.querySelector(`a[data-evidence-id="${k.evidence_id}"]`);
+                  }
+
+                  // 2. Secondary: Match by normalized href
+                  if (!anchor && k.url) {
+                    const normalizeUrl = (u: string) => u.split('#')[0].split('?')[0];
+                    const targetBaseUrl = normalizeUrl(k.url);
+                    const targetAnnoBaseUrl = k.annotated_url ? normalizeUrl(k.annotated_url) : null;
+
+                    const allAnchors = Array.from(docParsed.querySelectorAll('a'));
+                    anchor = allAnchors.find(a => {
+                      const href = a.getAttribute('href');
+                      if (!href) return false;
+                      const normHref = normalizeUrl(href);
+                      return normHref === targetBaseUrl || (targetAnnoBaseUrl && normHref === targetAnnoBaseUrl);
+                    }) || null;
+                  }
+
+                  if (anchor) {
+                    if (k.evidence_id && !anchor.getAttribute('data-evidence-id')) {
+                      anchor.setAttribute('data-evidence-id', k.evidence_id);
+                    }
+                    anchor.textContent = `[Kanıt ${ev.no}]`;
+                  }
+
+                  phaseText = docParsed.body.innerHTML;
+                } catch (e) {
+                  console.error('DOMParser ÖDR error:', e);
+                }
               }
 
               const isAlreadyInline = (k.url && phaseText.includes(k.url)) || 
