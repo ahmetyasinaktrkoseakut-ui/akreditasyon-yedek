@@ -123,7 +123,7 @@ export default function EvidenceAnnotatorModal({
     return currentY + lineHeight;
   };
 
-  // Render Image, PDF Page, or Real Word Text onto Canvas at Pure Natural Resolution
+  // Render Image, PDF Page, or Real Word Text onto Canvas at Full Crisp Resolution
   const renderDocumentToCanvas = async () => {
     if (!isOpen || !doc?.url || !canvasRef.current) return;
     const canvas = canvasRef.current;
@@ -138,7 +138,7 @@ export default function EvidenceAnnotatorModal({
         img.crossOrigin = 'anonymous';
         img.src = doc.url;
         img.onload = () => {
-          // Native resolution preserves 100% natural aspect ratio without distortion
+          // Native Image Dimensions
           canvas.width = img.naturalWidth || img.width;
           canvas.height = img.naturalHeight || img.height;
 
@@ -156,7 +156,8 @@ export default function EvidenceAnnotatorModal({
         const pageToRender = Math.min(Math.max(1, currentPage), pdf.numPages);
         const page = await pdf.getPage(pageToRender);
         
-        const viewport = page.getViewport({ scale: 1.5 });
+        // Render PDF at High-Quality 1.8x Scale
+        const viewport = page.getViewport({ scale: 1.8 });
 
         canvas.width = Math.round(viewport.width);
         canvas.height = Math.round(viewport.height);
@@ -171,7 +172,7 @@ export default function EvidenceAnnotatorModal({
         setHistory([initialState]);
         setRenderingDoc(false);
       } else if (isOfficeDoc) {
-        // Word Document: Standard A4 Portrait Aspect Ratio (800x1130)
+        // Word Document: Standard Full A4 Paper Aspect Ratio (850x1150)
         let extractedParagraphs: string[] = [];
 
         if (zipLibLoaded && (window as any).JSZip) {
@@ -194,8 +195,8 @@ export default function EvidenceAnnotatorModal({
           }
         }
 
-        canvas.width = 800;
-        canvas.height = Math.max(1130, 120 + (extractedParagraphs.length * 45));
+        canvas.width = 850;
+        canvas.height = Math.max(1150, 120 + (extractedParagraphs.length * 45));
 
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -212,14 +213,14 @@ export default function EvidenceAnnotatorModal({
         let yPos = 80;
         ctx.fillStyle = '#0f172a';
         ctx.font = 'bold 16px sans-serif';
-        yPos = wrapText(ctx, doc.name.replace(/\.[^/.]+$/, ''), 40, yPos, 720, 24);
+        yPos = wrapText(ctx, doc.name.replace(/\.[^/.]+$/, ''), 40, yPos, 770, 24);
         yPos += 10;
 
         ctx.strokeStyle = '#e2e8f0';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(40, yPos);
-        ctx.lineTo(760, yPos);
+        ctx.lineTo(810, yPos);
         ctx.stroke();
         yPos += 20;
 
@@ -227,13 +228,13 @@ export default function EvidenceAnnotatorModal({
           ctx.fillStyle = '#334155';
           ctx.font = '13px sans-serif';
           for (const para of extractedParagraphs) {
-            yPos = wrapText(ctx, para, 40, yPos, 720, 20);
+            yPos = wrapText(ctx, para, 40, yPos, 770, 20);
             yPos += 12;
           }
         } else {
           ctx.fillStyle = '#64748b';
           ctx.font = 'italic 13px sans-serif';
-          yPos = wrapText(ctx, "Word belgesi metinleri tuvale işlenmiştir. İlgili metinlerin üzerini yukarıdaki kalemi kullanarak çizebilirsiniz.", 40, yPos, 720, 20);
+          yPos = wrapText(ctx, "Word belgesi metinleri tuvale işlenmiştir. İlgili metinlerin üzerini yukarıdaki kalemi kullanarak çizebilirsiniz.", 40, yPos, 770, 20);
         }
 
         const initialState = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -567,7 +568,7 @@ export default function EvidenceAnnotatorModal({
           )}
         </div>
 
-        {/* Modal Body - Clean Unclipped Workspace */}
+        {/* Modal Body - Smooth Scrollable Container */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-100 flex flex-col">
           
           {/* Note Input */}
@@ -585,8 +586,8 @@ export default function EvidenceAnnotatorModal({
             />
           </div>
 
-          {/* MAIN INTERACTIVE CANVAS PREVIEW AREA - FULL VISIBILITY LIKE SCREENSHOT 1 */}
-          <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm flex-1 flex flex-col overflow-hidden">
+          {/* MAIN INTERACTIVE CANVAS PREVIEW AREA - FULL CLEAR READABLE WORKSPACE */}
+          <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2 shadow-sm flex-1 flex flex-col">
             <div className="flex items-center justify-between text-xs font-bold text-slate-700 border-b pb-1.5 flex-shrink-0">
               <span className="flex items-center gap-1.5">
                 <Pencil className="w-3.5 h-3.5 text-amber-600" />
@@ -603,8 +604,8 @@ export default function EvidenceAnnotatorModal({
               )}
             </div>
 
-            {/* Centered Workspace Container - 100% Unclipped View like Screenshot 1 */}
-            <div className="flex-1 overflow-hidden flex items-center justify-center bg-slate-900/10 rounded-lg p-3 min-h-0">
+            {/* Full-Resolution Read & Draw Workspace with Smooth Vertical Scrolling */}
+            <div className="overflow-y-auto overflow-x-auto bg-slate-900/10 rounded-lg p-4 min-h-[420px] max-h-[60vh] flex justify-center items-start">
               <canvas
                 ref={canvasRef}
                 onMouseDown={handleMouseDown}
@@ -612,13 +613,11 @@ export default function EvidenceAnnotatorModal({
                 onMouseUp={handleMouseUp}
                 className="cursor-crosshair border border-slate-300 shadow-md rounded bg-white block"
                 style={{
-                  maxWidth: '100%',
-                  maxHeight: '66vh',
-                  width: 'auto',
+                  width: '100%',
+                  maxWidth: '850px',
                   height: 'auto',
                   display: 'block',
-                  margin: '0 auto',
-                  objectFit: 'contain'
+                  margin: '0 auto'
                 }}
               />
             </div>
