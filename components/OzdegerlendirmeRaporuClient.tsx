@@ -269,10 +269,16 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
                 ev = { ...k, no: localEvidenceCounter++ };
                 birlesikKanitlar.push(ev);
               }
+              // Re-number inline evidence link text to match report-wide global ev.no
+              if (k.url) {
+                const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const escapedUrl = escapeRegExp(k.url);
+                const linkTextRegex = new RegExp(`(<a\\s+[^>]*href=["']${escapedUrl}["'][^>]*>)\\[Kanıt\\s+\\d+\\](<\\/a>)`, 'gi');
+                phaseText = phaseText.replace(linkTextRegex, `$1[Kanıt ${ev.no}]$2`);
+              }
+
               const isAlreadyInline = (k.url && phaseText.includes(k.url)) || 
-                                      (k.annotated_url && phaseText.includes(k.annotated_url)) || 
-                                      phaseText.includes(`[Kanıt ${ev.no}]`) || 
-                                      phaseText.includes(`Kanıt ${ev.no}`);
+                                      (k.annotated_url && phaseText.includes(k.annotated_url));
               if (!isAlreadyInline) {
                 unplacedEvidenceStrings.push(`<a href="${ev.url}" target="_blank" rel="noopener noreferrer" style="color: #ea580c; text-decoration: underline;">[Kanıt ${ev.no}]</a>`);
               }

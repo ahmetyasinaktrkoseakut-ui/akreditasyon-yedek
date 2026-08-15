@@ -111,6 +111,11 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
           console.error('Old file deletion error:', err);
         }
       }
+
+      // Automatically persist to Supabase database!
+      setTimeout(() => {
+        handleSave();
+      }, 100);
     }
   };
 
@@ -510,6 +515,11 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       // 3. Remove document from state
       const newDocs = dokumanlar.filter((_, i) => i !== index);
       setDokumanlar(newDocs);
+
+      // Automatically persist to Supabase database!
+      setTimeout(() => {
+        handleSave();
+      }, 100);
     }
   };
 

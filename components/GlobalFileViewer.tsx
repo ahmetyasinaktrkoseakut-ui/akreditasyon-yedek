@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, Download, FileText, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { X, Download, FileText, Image as ImageIcon, ExternalLink, Loader2 } from 'lucide-react';
 
 export default function GlobalFileViewer() {
   const [isOpen, setIsOpen] = useState(false);
   const [viewerUrl, setViewerUrl] = useState('');
   const [viewerType, setViewerType] = useState<'pdf' | 'image' | 'docx'>('pdf');
   const [viewerName, setViewerName] = useState('');
+  const [wordHtml, setWordHtml] = useState<string>('');
+  const [loadingDocx, setLoadingDocx] = useState(false);
 
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
@@ -43,6 +45,40 @@ export default function GlobalFileViewer() {
     document.addEventListener('click', handleGlobalClick, { capture: true });
     return () => document.removeEventListener('click', handleGlobalClick, { capture: true });
   }, []);
+
+  useEffect(() => {
+    if (isOpen && viewerType === 'docx' && viewerUrl) {
+      setLoadingDocx(true);
+      setWordHtml('');
+      const renderWord = async () => {
+        try {
+          if (!(window as any).mammoth) {
+            const mScript = document.createElement('script');
+            mScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js';
+            mScript.onload = async () => {
+              if ((window as any).mammoth) {
+                const res = await fetch(viewerUrl);
+                const arrayBuffer = await res.arrayBuffer();
+                const result = await (window as any).mammoth.convertToHtml({ arrayBuffer });
+                setWordHtml(result.value);
+              }
+            };
+            document.head.appendChild(mScript);
+          } else {
+            const res = await fetch(viewerUrl);
+            const arrayBuffer = await res.arrayBuffer();
+            const result = await (window as any).mammoth.convertToHtml({ arrayBuffer });
+            setWordHtml(result.value);
+          }
+        } catch (err) {
+          console.error('Word render error:', err);
+        } finally {
+          setLoadingDocx(false);
+        }
+      };
+      renderWord();
+    }
+  }, [isOpen, viewerType, viewerUrl]);
 
   const handleDownload = async () => {
     try {
@@ -117,6 +153,32 @@ export default function GlobalFileViewer() {
               alt={viewerName} 
               className="max-w-full max-h-[75vh] object-contain rounded-xl shadow-lg border border-slate-200 dark:border-slate-800"
             />
+          ) : viewerType === 'docx' ? (
+            <div className="w-full max-w-[850px] bg-white border border-slate-200 shadow-xl rounded-xl p-8 max-h-[75vh] overflow-y-auto font-sans leading-relaxed text-sm text-slate-900">
+              <style jsx global>{`
+                .global-word-content table {
+                  width: 100% !important;
+                  border-collapse: collapse !important;
+                  margin: 1rem 0 !important;
+                }
+                .global-word-content td, .global-word-content th {
+                  border: 1.5px solid #334155 !important;
+                  padding: 6px 10px !important;
+                }
+                .global-word-content img {
+                  max-width: 100% !important;
+                  height: auto !important;
+                  display: inline-block !important;
+                }
+              `}</style>
+              {loadingDocx ? (
+                <div className="p-12 text-center text-slate-500 font-semibold flex items-center justify-center gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-blue-600" /> Word Belgesi Yükleniyor...
+                </div>
+              ) : (
+                <div className="global-word-content" dangerouslySetInnerHTML={{ __html: wordHtml || '<p class="text-slate-400 italic">Doküman içeriği görüntülenemedi.</p>' }} />
+              )}
+            </div>
           ) : (
             <iframe 
               src={`${viewerUrl}#toolbar=0`} 

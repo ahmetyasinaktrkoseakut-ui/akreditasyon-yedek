@@ -337,7 +337,7 @@ export default function EvidenceAnnotatorModal({
       } 
       // 2. Export Word Document Drawing using html2canvas
       else if (isOfficeDoc && wordContainerRef.current && (window as any).html2canvas) {
-        oldUrlToDelete = doc.annotated_url || undefined;
+        oldUrlToDelete = doc.annotated_url || doc.url;
         const htmlCanvas = await (window as any).html2canvas(wordContainerRef.current, { scale: 2, useCORS: true });
         const blob = await new Promise<Blob | null>(resolve => htmlCanvas.toBlob(resolve, 'image/png'));
         if (blob) {
@@ -356,7 +356,7 @@ export default function EvidenceAnnotatorModal({
         const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
         
         if (blob) {
-          oldUrlToDelete = doc.annotated_url || undefined;
+          oldUrlToDelete = doc.annotated_url || doc.url;
           const cleanName = doc.name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^/.]+$/, '');
           const newFileName = `isaretli_${Date.now()}_${cleanName}.png`;
           const { error: uploadError } = await supabase.storage.from('dokumanlar').upload(newFileName, blob);
