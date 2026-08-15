@@ -61,7 +61,7 @@ export default function EvidenceAnnotatorModal({
 
   const isImage = doc?.name ? /\.(jpg|jpeg|png|webp|gif)$/i.test(doc.name) : false;
   const isPdf = doc?.name ? /\.pdf$/i.test(doc.name) : false;
-  const isOfficeDoc = doc?.name ? /\.(doc|docx|xls|xlsx|ppt|pptx)$/i.test(doc.name) : false;
+  const isOfficeDoc = doc?.name ? /\.docx$/i.test(doc.name) : false;
 
   // Dynamically Load PDF.js, Mammoth.js & html2canvas from CDN
   useEffect(() => {
@@ -341,13 +341,13 @@ export default function EvidenceAnnotatorModal({
         const htmlCanvas = await (window as any).html2canvas(wordContainerRef.current, { scale: 2, useCORS: true });
         const blob = await new Promise<Blob | null>(resolve => htmlCanvas.toBlob(resolve, 'image/png'));
         if (blob) {
-          const cleanName = doc.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const cleanName = doc.name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^/.]+$/, '');
           const newFileName = `isaretli_word_${Date.now()}_${cleanName}.png`;
           const { error: uploadError } = await supabase.storage.from('dokumanlar').upload(newFileName, blob);
-          if (!uploadError) {
-            const { data: publicUrlData } = supabase.storage.from('dokumanlar').getPublicUrl(newFileName);
-            finalUrl = publicUrlData.publicUrl;
-          }
+          if (uploadError) throw uploadError;
+
+          const { data: publicUrlData } = supabase.storage.from('dokumanlar').getPublicUrl(newFileName);
+          finalUrl = publicUrlData.publicUrl;
         }
       }
       // 3. Export PDF/Image canvas drawing
@@ -357,25 +357,33 @@ export default function EvidenceAnnotatorModal({
         
         if (blob) {
           oldUrlToDelete = doc.annotated_url || undefined;
-          const cleanName = doc.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const cleanName = doc.name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^/.]+$/, '');
           const newFileName = `isaretli_${Date.now()}_${cleanName}.png`;
           const { error: uploadError } = await supabase.storage.from('dokumanlar').upload(newFileName, blob);
-          if (!uploadError) {
-            const { data: publicUrlData } = supabase.storage.from('dokumanlar').getPublicUrl(newFileName);
-            finalUrl = publicUrlData.publicUrl;
-          }
+          if (uploadError) throw uploadError;
+
+          const { data: publicUrlData } = supabase.storage.from('dokumanlar').getPublicUrl(newFileName);
+          finalUrl = publicUrlData.publicUrl;
         }
       }
 
       let displayUrl = finalUrl;
-      if (isPdf && currentPage) {
+      if (isPdf && currentPage && finalUrl === doc.url) {
         const baseUrl = finalUrl.split('#')[0];
         displayUrl = `${baseUrl}#page=${currentPage}`;
       }
 
+      // If document was exported as PNG drawing, update name extension to .png so re-opening renders it as an image canvas!
+      let newDocName = doc.name;
+      if (replacementFile) {
+        newDocName = replacementFile.name;
+      } else if (finalUrl !== doc.url) {
+        newDocName = `${doc.name.replace(/\.[^/.]+$/, '')}_isaretli.png`;
+      }
+
       const updatedDoc: EvidenceDoc = {
         ...doc,
-        name: replacementFile ? replacementFile.name : doc.name,
+        name: newDocName,
         url: displayUrl,
         size: replacementFile ? Math.round(replacementFile.size / 1024) : doc.size,
         highlight_note: highlightNote,

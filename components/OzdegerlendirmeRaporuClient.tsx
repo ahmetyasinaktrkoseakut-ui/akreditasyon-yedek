@@ -269,7 +269,10 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
                 ev = { ...k, no: localEvidenceCounter++ };
                 birlesikKanitlar.push(ev);
               }
-              const isAlreadyInline = phaseText.includes(k.url) || phaseText.includes(`[Kanıt ${ev.no}]`) || phaseText.includes(`Kanıt ${ev.no}`);
+              const isAlreadyInline = (k.url && phaseText.includes(k.url)) || 
+                                      (k.annotated_url && phaseText.includes(k.annotated_url)) || 
+                                      phaseText.includes(`[Kanıt ${ev.no}]`) || 
+                                      phaseText.includes(`Kanıt ${ev.no}`);
               if (!isAlreadyInline) {
                 unplacedEvidenceStrings.push(`<a href="${ev.url}" target="_blank" rel="noopener noreferrer" style="color: #ea580c; text-decoration: underline;">[Kanıt ${ev.no}]</a>`);
               }

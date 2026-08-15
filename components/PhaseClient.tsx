@@ -78,14 +78,38 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
     setAnnotatorModalOpen(true);
   };
 
-  const handleSaveAnnotatedDoc = (updatedDoc: any, oldUrlToDelete?: string) => {
+  const handleSaveAnnotatedDoc = async (updatedDoc: any, oldUrlToDelete?: string) => {
     if (selectedDocForAnnotation !== null) {
+      const oldDoc = dokumanlar[selectedDocForAnnotation.index];
       const newDocs = [...dokumanlar];
       newDocs[selectedDocForAnnotation.index] = updatedDoc;
       setDokumanlar(newDocs);
 
+      // Automatically update inline evidence URLs in aciklama text
+      if (oldDoc?.url && updatedDoc?.url && oldDoc.url !== updatedDoc.url) {
+        const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escapedOldUrl = escapeRegExp(oldDoc.url);
+        const urlRegex = new RegExp(escapedOldUrl, 'gi');
+        setAciklama(prev => prev.replace(urlRegex, updatedDoc.url));
+      }
+
+      // Delete old file immediately from Supabase Storage
       if (oldUrlToDelete) {
-        setDeletedDocs(prev => [...prev, { url: oldUrlToDelete }]);
+        try {
+          let bucketPath = '';
+          if (oldUrlToDelete.includes('/dokumanlar/')) {
+            bucketPath = oldUrlToDelete.split('/dokumanlar/')[1]?.split('?')[0];
+          } else {
+            const urlParts = oldUrlToDelete.split('/');
+            bucketPath = urlParts[urlParts.length - 1]?.split('?')[0];
+          }
+          if (bucketPath) {
+            const decodedPath = decodeURIComponent(bucketPath);
+            await supabase.storage.from('dokumanlar').remove([decodedPath]);
+          }
+        } catch (err) {
+          console.error('Old file deletion error:', err);
+        }
       }
     }
   };
