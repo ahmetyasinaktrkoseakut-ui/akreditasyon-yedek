@@ -238,15 +238,39 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       newDocs[selectedDocForAnnotation.index] = updatedDoc;
 
       let freshAciklama = aciklama;
-      if (oldDoc?.url && updatedDoc?.url && oldDoc.url !== updatedDoc.url) {
-        const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const escapedOldUrl = escapeRegExp(oldDoc.url);
-        const urlRegex = new RegExp(escapedOldUrl, 'gi');
-        freshAciklama = freshAciklama.replace(urlRegex, updatedDoc.url);
+      if (oldDoc?.url && updatedDoc?.url && oldDoc.url !== updatedDoc.url && typeof window !== 'undefined' && window.DOMParser) {
+        try {
+          const parser = new DOMParser();
+          const docParsed = parser.parseFromString(freshAciklama, 'text/html');
+
+          let anchor: HTMLAnchorElement | null = null;
+          if (updatedDoc.evidence_id) {
+            anchor = docParsed.querySelector(`a[data-evidence-id="${updatedDoc.evidence_id}"]`);
+          }
+          if (!anchor && oldDoc.url) {
+            const normalizeUrl = (u: string) => u.split('#')[0].split('?')[0];
+            const targetBaseUrl = normalizeUrl(oldDoc.url);
+            const allAnchors = Array.from(docParsed.querySelectorAll('a'));
+            anchor = allAnchors.find(a => {
+              const href = a.getAttribute('href');
+              return href ? normalizeUrl(href) === targetBaseUrl : false;
+            }) || null;
+          }
+
+          if (anchor) {
+            anchor.setAttribute('href', updatedDoc.url);
+            freshAciklama = docParsed.body.innerHTML;
+          }
+        } catch (e) {
+          console.error('DOMParser annotation URL update error:', e);
+        }
       }
 
       setDokumanlar(newDocs);
       setAciklama(freshAciklama);
+      if (editorRef.current) {
+        editorRef.current.setHTML(freshAciklama);
+      }
 
       // 1. Save database FIRST
       try {
@@ -277,7 +301,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
           }
         } catch (err: any) {
           console.error('Old file deletion error:', err);
-          alert(`Eski dosya temizleme uyarısı: ${err?.message || err}`);
+          alert(`Eski depolama dosyası silinirken hata oluştu: ${err?.message || err}`);
         }
       }
     }
