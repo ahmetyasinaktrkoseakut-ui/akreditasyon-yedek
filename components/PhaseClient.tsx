@@ -71,34 +71,25 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
   const persistData = async (updatedDocs: any[], updatedAciklama: string) => {
     if (!selectedPeriod) return;
 
-    if (pukoId) {
-      const { error } = await supabase
-        .from('puko_degerlendirmeleri')
-        .update({
-          aciklama: updatedAciklama,
-          kanit_dosyalari: updatedDocs,
-          durum: onayDurumu || 'Taslak',
-        })
-        .eq('id', pukoId);
+    const upsertData: Record<string, any> = {
+      alt_olcut_id: resolvedParams.id,
+      puko_asamasi: phaseId,
+      donem_id: selectedPeriod.id,
+      aciklama: updatedAciklama,
+      kanit_dosyalari: updatedDocs,
+      durum: onayDurumu || 'Taslak',
+    };
 
-      if (error) throw error;
-    } else {
-      const { data, error } = await supabase
-        .from('puko_degerlendirmeleri')
-        .insert({
-          alt_olcut_id: resolvedParams.id,
-          puko_asamasi: phaseId,
-          donem_id: selectedPeriod.id,
-          aciklama: updatedAciklama,
-          kanit_dosyalari: updatedDocs,
-          durum: onayDurumu || 'Taslak',
-        })
-        .select();
+    const { data, error } = await supabase
+      .from('puko_degerlendirmeleri')
+      .upsert(upsertData, {
+        onConflict: 'alt_olcut_id,puko_asamasi,donem_id',
+      })
+      .select();
 
-      if (error) throw error;
-      if (data && data[0]?.id) {
-        setPukoId(data[0].id);
-      }
+    if (error) throw error;
+    if (data && data[0]?.id && !pukoId) {
+      setPukoId(data[0].id);
     }
   };
 
@@ -204,11 +195,15 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
         }
       }
 
-      // Persist all updated rows in a single bulk upsert request
+      // Persist all updated rows in a single bulk upsert request without id field
       if (rowsToUpdate.length > 0) {
+        const bulkPayload = rowsToUpdate.map(({ id, ...payload }) => payload);
+
         const { error: bulkUpdateError } = await supabase
           .from('puko_degerlendirmeleri')
-          .upsert(rowsToUpdate);
+          .upsert(bulkPayload, {
+            onConflict: 'alt_olcut_id,puko_asamasi,donem_id',
+          });
 
         if (bulkUpdateError) throw bulkUpdateError;
       }
