@@ -59,6 +59,9 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
   // Rich Text Editor Ref for Cursor Position Evidence Tag Insertion
   const editorRef = useRef<RichTextEditorRef>(null);
 
+  // Global Evidence Counter offset from preceding PUKO stages
+  const [previousDocsCount, setPreviousDocsCount] = useState<number>(0);
+
   // Evidence Annotator Modal State
   const [annotatorModalOpen, setAnnotatorModalOpen] = useState(false);
   const [annotatorReadOnly, setAnnotatorReadOnly] = useState(false);
@@ -254,6 +257,27 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
         setOnayDurumu('');
         setUstBirimOnerileri([]);
       }
+
+      // Calculate previous documents count from preceding PUKO stages for global continuous evidence numbering
+      const orderMap: Record<string, number> = { planlama: 1, uygulama: 2, kontrol: 3, onlem: 4, olgunluk: 5 };
+      const currentOrder = orderMap[phaseId] || 1;
+
+      const { data: allPukoRows } = await supabase
+        .from('puko_degerlendirmeleri')
+        .select('puko_asamasi, kanit_dosyalari')
+        .eq('alt_olcut_id', resolvedParams.id)
+        .eq('donem_id', selectedPeriod?.id);
+
+      let prevCount = 0;
+      if (allPukoRows) {
+        allPukoRows.forEach((row: any) => {
+          const rowOrder = orderMap[row.puko_asamasi] || 99;
+          if (rowOrder < currentOrder && Array.isArray(row.kanit_dosyalari)) {
+            prevCount += row.kanit_dosyalari.length;
+          }
+        });
+      }
+      setPreviousDocsCount(prevCount);
 
       if (showEylemPlanTablosu) {
         const { data: eylemlerData } = await supabase
@@ -672,7 +696,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
                       <div className="flex-1 overflow-hidden">
                         <div className="flex items-center gap-1.5 mb-1">
                           <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-bold rounded border border-orange-200">
-                            [Kanıt {idx + 1}]
+                            [Kanıt {previousDocsCount + idx + 1}]
                           </span>
                           {doc.is_annotated && (
                             <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded">
