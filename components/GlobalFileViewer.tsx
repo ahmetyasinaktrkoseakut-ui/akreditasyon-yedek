@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, Download, FileText, Image as ImageIcon } from 'lucide-react';
+import { X, Download, FileText, Image as ImageIcon, ExternalLink } from 'lucide-react';
 
 export default function GlobalFileViewer() {
   const [isOpen, setIsOpen] = useState(false);
@@ -83,6 +83,15 @@ export default function GlobalFileViewer() {
             </h4>
           </div>
           <div className="flex items-center gap-2">
+            <a 
+              href={viewerUrl} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="p-2 hover:bg-slate-100 dark:hover:bg-[#1e2d4a] rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors flex items-center gap-1.5 text-xs font-bold"
+              title="Yeni Sekmede Aç"
+            >
+              <ExternalLink className="w-4 h-4" /> Yeni Sekmede Aç
+            </a>
             <button 
               onClick={handleDownload}
               className="p-2 hover:bg-slate-100 dark:hover:bg-[#1e2d4a] rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-bold"
