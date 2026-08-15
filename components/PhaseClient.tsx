@@ -194,24 +194,23 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
 
           rowsToUpdate.push({
             id: row.id,
+            alt_olcut_id: row.alt_olcut_id,
             puko_asamasi: row.puko_asamasi,
+            donem_id: row.donem_id,
             kanit_dosyalari: updatedRowDocs,
             aciklama: updatedHtml,
+            durum: row.durum || 'Taslak',
           });
         }
       }
 
-      // Persist all updated rows to Supabase
-      for (const item of rowsToUpdate) {
-        const { error: updateError } = await supabase
+      // Persist all updated rows in a single bulk upsert request
+      if (rowsToUpdate.length > 0) {
+        const { error: bulkUpdateError } = await supabase
           .from('puko_degerlendirmeleri')
-          .update({
-            kanit_dosyalari: item.kanit_dosyalari,
-            aciklama: item.aciklama,
-          })
-          .eq('id', item.id);
+          .upsert(rowsToUpdate);
 
-        if (updateError) throw updateError;
+        if (bulkUpdateError) throw bulkUpdateError;
       }
 
       setPreviousDocsCount(currentStagePrevCount);
