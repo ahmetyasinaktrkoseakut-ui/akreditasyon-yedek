@@ -426,7 +426,39 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
     if (confirm(t('delete_confirm'))) {
       const docToRemove = dokumanlar[index];
       
-      setDeletedDocs(prev => [...prev, docToRemove]);
+      // 1. Immediately delete physical file from Supabase Storage Bucket
+      if (docToRemove?.url) {
+        try {
+          let bucketPath = '';
+          if (docToRemove.url.includes('/dokumanlar/')) {
+            bucketPath = docToRemove.url.split('/dokumanlar/')[1]?.split('?')[0];
+          } else {
+            const urlParts = docToRemove.url.split('/');
+            bucketPath = urlParts[urlParts.length - 1]?.split('?')[0];
+          }
+          if (bucketPath) {
+            const decodedPath = decodeURIComponent(bucketPath);
+            await supabase.storage.from('dokumanlar').remove([decodedPath]);
+          }
+
+          // Delete annotated copy if present
+          if (docToRemove.annotated_url && docToRemove.annotated_url !== docToRemove.url) {
+            let annoPath = '';
+            if (docToRemove.annotated_url.includes('/dokumanlar/')) {
+              annoPath = docToRemove.annotated_url.split('/dokumanlar/')[1]?.split('?')[0];
+            } else {
+              const urlParts = docToRemove.annotated_url.split('/');
+              annoPath = urlParts[urlParts.length - 1]?.split('?')[0];
+            }
+            if (annoPath) {
+              const decodedAnnoPath = decodeURIComponent(annoPath);
+              await supabase.storage.from('dokumanlar').remove([decodedAnnoPath]);
+            }
+          }
+        } catch (err) {
+          console.error('Storage deletion error:', err);
+        }
+      }
       
       const newDocs = dokumanlar.filter((_, i) => i !== index);
       setDokumanlar(newDocs);
