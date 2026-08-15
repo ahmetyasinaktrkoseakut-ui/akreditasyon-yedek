@@ -558,16 +558,6 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
                       </div>
                     </div>
 
-                    {!isReadOnly && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.preventDefault(); handleInsertEvidenceAtCursor(doc, idx); }}
-                        className="w-full py-1.5 px-2 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-xs rounded border border-orange-200 flex items-center justify-center gap-1 transition-colors"
-                        title="İmlecin durduğu yere Kanıt atıfını yerleştir"
-                      >
-                        📍 Metinde İmlece Yerleştir ([Kanıt {idx + 1}])
-                      </button>
-                    )}
                   </div>
                 ))
               )}
