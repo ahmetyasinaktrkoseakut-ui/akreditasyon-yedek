@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { Loader2, Plus, Info, Save, Link as LinkIcon, Settings, CalendarDays, ExternalLink, Trash2, Pencil } from 'lucide-react';
+import { Loader2, Plus, Info, Save, Link as LinkIcon, Settings, CalendarDays, ExternalLink, Trash2, Pencil, Eye } from 'lucide-react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
 import { logAction } from '@/lib/logger';
@@ -61,6 +61,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
 
   // Evidence Annotator Modal State
   const [annotatorModalOpen, setAnnotatorModalOpen] = useState(false);
+  const [annotatorReadOnly, setAnnotatorReadOnly] = useState(false);
   const [selectedDocForAnnotation, setSelectedDocForAnnotation] = useState<{ doc: any; index: number } | null>(null);
 
   const handleInsertEvidenceAtCursor = (doc: any, idx: number) => {
@@ -71,8 +72,9 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
     }
   };
 
-  const handleOpenAnnotator = (index: number) => {
+  const handleOpenAnnotator = (index: number, readOnly: boolean = false) => {
     setSelectedDocForAnnotation({ doc: dokumanlar[index], index });
+    setAnnotatorReadOnly(readOnly);
     setAnnotatorModalOpen(true);
   };
 
@@ -541,15 +543,19 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
                       
                       <div className="flex items-center gap-1">
                         <button 
-                          onClick={(e) => { e.preventDefault(); handleOpenAnnotator(idx); }} 
+                          onClick={(e) => { e.preventDefault(); handleOpenAnnotator(idx, false); }} 
                           className="p-1.5 bg-amber-50 text-amber-600 rounded flex-shrink-0 hover:bg-amber-100 transition-colors" 
                           title="İşaretle / Düzelt"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 rounded flex-shrink-0 hover:bg-blue-100" title="İndir/Gör">
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
+                        <button 
+                          onClick={(e) => { e.preventDefault(); handleOpenAnnotator(idx, true); }} 
+                          className="p-1.5 bg-blue-50 text-blue-600 rounded flex-shrink-0 hover:bg-blue-100 transition-colors" 
+                          title="Site İçi Görüntüle"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
                         {!isReadOnly && (
                           <button onClick={(e) => { e.preventDefault(); handleRemoveDoc(idx); }} className="p-1.5 bg-red-50 text-red-600 rounded flex-shrink-0 hover:bg-red-100" title="Sil">
                             <Trash2 className="w-3.5 h-3.5" />
@@ -742,7 +748,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       doc={selectedDocForAnnotation?.doc || null}
       docIndex={selectedDocForAnnotation?.index ?? -1}
       onSaveAnnotatedDoc={handleSaveAnnotatedDoc}
-      isReadOnly={isReadOnly}
+      isReadOnly={isReadOnly || annotatorReadOnly}
     />
   </>
 );
