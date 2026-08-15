@@ -7,11 +7,12 @@ import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
 import { logAction } from '@/lib/logger';
 import StepPanel from '@/components/StepPanel';
-import RichTextEditor from '@/components/RichTextEditor';
+import RichTextEditor, { RichTextEditorRef } from '@/components/RichTextEditor';
 import { getLocalizedField } from '@/lib/i18n-utils';
 import { validateFileSize, getAssignedLetter } from '@/lib/utils';
 import { usePeriod } from '@/contexts/PeriodContext';
 import EvidenceAnnotatorModal from '@/components/EvidenceAnnotatorModal';
+import { useRef } from 'react';
 
 interface Eylem {
   id?: number;
@@ -55,9 +56,20 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
   const [pukoId, setPukoId] = useState<string | null>(null);
   const [onayDurumu, setOnayDurumu] = useState<string>('');
 
+  // Rich Text Editor Ref for Cursor Position Evidence Tag Insertion
+  const editorRef = useRef<RichTextEditorRef>(null);
+
   // Evidence Annotator Modal State
   const [annotatorModalOpen, setAnnotatorModalOpen] = useState(false);
   const [selectedDocForAnnotation, setSelectedDocForAnnotation] = useState<{ doc: any; index: number } | null>(null);
+
+  const handleInsertEvidenceAtCursor = (doc: any, idx: number) => {
+    const kanitNo = idx + 1;
+    const tagHtml = `<a href="${doc.url}" target="_blank" rel="noopener noreferrer" style="color: #ea580c; font-weight: bold; text-decoration: underline; margin: 0 4px;">[Kanıt ${kanitNo}]</a>&nbsp;`;
+    if (editorRef.current) {
+      editorRef.current.insertContent(tagHtml);
+    }
+  };
 
   const handleOpenAnnotator = (index: number) => {
     setSelectedDocForAnnotation({ doc: dokumanlar[index], index });
@@ -389,7 +401,14 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
         size: Math.round(file.size / 1024)
       };
 
-      setDokumanlar(prev => [...prev, newDoc]);
+      setDokumanlar(prev => {
+        const updated = [...prev, newDoc];
+        const newIdx = updated.length - 1;
+        setTimeout(() => {
+          handleInsertEvidenceAtCursor(newDoc, newIdx);
+        }, 100);
+        return updated;
+      });
 
     } catch (error: any) {
       console.error('File upload error:', error);
@@ -420,25 +439,33 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
 
   return (
     <>
-      <div className="p-8 max-w-[1400px] mx-auto animate-in fade-in duration-500">
-        <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex flex-col gap-2">
-            <div className="text-sm text-slate-700 flex items-center gap-2 font-medium">
-              <span className="cursor-pointer hover:text-blue-600">{t('home')}</span> &gt; 
-              <span className="cursor-pointer hover:text-blue-600">{t('criteria')}</span> &gt;
-              <span className="text-slate-800">{[olcutDetay?.kod, getLocalizedField(olcutDetay, 'olcut_adi', locale)].filter(Boolean).join(' ') || `Ölçüt #${resolvedParams.id}`}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold text-slate-800">
-                {[olcutDetay?.kod, getLocalizedField(olcutDetay, 'olcut_adi', locale)].filter(Boolean).join(' ') || `Ölçüt #${resolvedParams.id}`}
-              </h2>
-              <Info className="w-4 h-4 text-slate-400 cursor-pointer" />
-            </div>
-            <p className="text-sm text-slate-800">{t('process_management_desc', { phaseTitle: tStepPanel(`${phaseId}_title`) })}</p>
+      <div className="p-8 max-w-7xl mx-auto space-y-6">
+      
+      {/* Dynamic Header Banner */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+              {olcutDetay?.kod}
+            </span>
+            <h1 className="text-xl font-bold text-slate-800">{getLocalizedField(olcutDetay, 'olcut_adi', locale)}</h1>
           </div>
-          
-          {/* Eski Onay/Ret butonları ve durum rozeti Stage 7'ye taşındı */}
+          <p className="text-sm text-slate-500">{tStepPanel(`${phaseId}_title`)} {t('header_subtitle')}</p>
         </div>
+
+        <div className="flex items-center gap-3">
+          {!isReadOnly && (
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-all shadow-sm shadow-blue-200 disabled:opacity-50"
+          >
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {isSaving ? t('saving') : t('save')}
+          </button>
+          )}
+        </div>
+      </div>
 
       <StepPanel activeStepId={phaseId} altOlcutId={resolvedParams.id} />
 
@@ -452,7 +479,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
               {isReadOnly && <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded border border-amber-200">{t('readOnly')}</span>}
             </h3>
             <div className="w-full">
-              <RichTextEditor content={aciklama} onChange={setAciklama} readOnly={isReadOnly} />
+              <RichTextEditor ref={editorRef} content={aciklama} onChange={setAciklama} readOnly={isReadOnly} />
             </div>
             <div className="flex justify-end mt-2 text-xs text-slate-400">
               {t('word_count')} {aciklama.replace(/<[^>]*>?/gm, '').split(/\s+/).filter(w => w.length > 0).length}
@@ -490,40 +517,57 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
                 </div>
               ) : (
                 dokumanlar.map((doc, idx) => (
-                  <div key={idx} className="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-lg shadow-sm group relative">
-                    <div className="flex-1 overflow-hidden">
-                      <p className="text-sm font-medium text-slate-700 truncate" title={doc.name}>{doc.name}</p>
-                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                        <span className="text-[11px] text-slate-500">{doc.size ? `${doc.size} KB` : t('unknown_size')}</span>
-                        {doc.is_annotated && (
-                          <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded">
-                            ✓ İşaretli
+                  <div key={idx} className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded-lg shadow-sm group relative">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 overflow-hidden">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-bold rounded border border-orange-200">
+                            [Kanıt {idx + 1}]
                           </span>
+                          {doc.is_annotated && (
+                            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded">
+                              ✓ İşaretli
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm font-medium text-slate-700 truncate" title={doc.name}>{doc.name}</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">{doc.size ? `${doc.size} KB` : t('unknown_size')}</p>
+                        {doc.highlight_note && (
+                          <p className="text-[11px] text-amber-700 font-medium italic truncate mt-1" title={doc.highlight_note}>
+                            📌 {doc.highlight_note}
+                          </p>
                         )}
                       </div>
-                      {doc.highlight_note && (
-                        <p className="text-[11px] text-amber-700 font-medium italic truncate mt-1" title={doc.highlight_note}>
-                          📌 {doc.highlight_note}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button 
-                        onClick={(e) => { e.preventDefault(); handleOpenAnnotator(idx); }} 
-                        className="p-1.5 bg-amber-50 text-amber-600 rounded flex-shrink-0 hover:bg-amber-100 transition-colors" 
-                        title="İşaretle / Düzelt"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <a href={doc.url} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 rounded flex-shrink-0 hover:bg-blue-100" title="İndir/Gör">
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                      {!isReadOnly && (
-                        <button onClick={(e) => { e.preventDefault(); handleRemoveDoc(idx); }} className="p-1.5 bg-red-50 text-red-600 rounded flex-shrink-0 hover:bg-red-100" title="Sil">
-                          <Trash2 className="w-3.5 h-3.5" />
+                      
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={(e) => { e.preventDefault(); handleOpenAnnotator(idx); }} 
+                          className="p-1.5 bg-amber-50 text-amber-600 rounded flex-shrink-0 hover:bg-amber-100 transition-colors" 
+                          title="İşaretle / Düzelt"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
                         </button>
-                      )}
+                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 rounded flex-shrink-0 hover:bg-blue-100" title="İndir/Gör">
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                        {!isReadOnly && (
+                          <button onClick={(e) => { e.preventDefault(); handleRemoveDoc(idx); }} className="p-1.5 bg-red-50 text-red-600 rounded flex-shrink-0 hover:bg-red-100" title="Sil">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
+
+                    {!isReadOnly && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); handleInsertEvidenceAtCursor(doc, idx); }}
+                        className="w-full py-1.5 px-2 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-xs rounded border border-orange-200 flex items-center justify-center gap-1 transition-colors"
+                        title="İmlecin durduğu yere Kanıt atıfını yerleştir"
+                      >
+                        📍 Metinde İmlece Yerleştir ([Kanıt {idx + 1}])
+                      </button>
+                    )}
                   </div>
                 ))
               )}

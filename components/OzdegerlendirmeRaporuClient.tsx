@@ -262,22 +262,26 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
         let phaseText = row.aciklama;
         if (phaseText && phaseText.trim() !== '' && phaseText !== '<p></p>') {
           if (row.kanit_dosyalari && Array.isArray(row.kanit_dosyalari) && row.kanit_dosyalari.length > 0) {
-            const phaseEvidenceStrings: string[] = [];
+            const unplacedEvidenceStrings: string[] = [];
             row.kanit_dosyalari.forEach((k: any) => {
               let ev = birlesikKanitlar.find(e => e.url === k.url);
               if (!ev) {
                 ev = { ...k, no: localEvidenceCounter++ };
                 birlesikKanitlar.push(ev);
               }
-              phaseEvidenceStrings.push(`<a href="${ev.url}" target="_blank" rel="noopener noreferrer" style="color: #ea580c; text-decoration: underline;">[Kanıt ${ev.no}]</a>`);
+              const isAlreadyInline = phaseText.includes(k.url) || phaseText.includes(`[Kanıt ${ev.no}]`) || phaseText.includes(`Kanıt ${ev.no}`);
+              if (!isAlreadyInline) {
+                unplacedEvidenceStrings.push(`<a href="${ev.url}" target="_blank" rel="noopener noreferrer" style="color: #ea580c; text-decoration: underline;">[Kanıt ${ev.no}]</a>`);
+              }
             });
             
-            const evidenceHtml = ` <span style="font-weight: bold; font-size: 0.9em; margin-left: 6px;">${phaseEvidenceStrings.join(' ')}</span>`;
-            
-            if (phaseText.trim().endsWith('</p>')) {
-              phaseText = phaseText.trim().replace(/<\/p>$/, `${evidenceHtml}</p>`);
-            } else {
-              phaseText += evidenceHtml;
+            if (unplacedEvidenceStrings.length > 0) {
+              const evidenceHtml = ` <span style="font-weight: bold; font-size: 0.9em; margin-left: 6px;">${unplacedEvidenceStrings.join(' ')}</span>`;
+              if (phaseText.trim().endsWith('</p>')) {
+                phaseText = phaseText.trim().replace(/<\/p>$/, `${evidenceHtml}</p>`);
+              } else {
+                phaseText += evidenceHtml;
+              }
             }
           }
           birlesikMetin += (birlesikMetin ? '<br/><br/>' : '') + phaseText;
