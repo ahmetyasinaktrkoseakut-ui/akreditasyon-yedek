@@ -459,13 +459,12 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
           .eq('id', currentRecord.id);
         if (error) throw error;
         
-        // BİLDİRİM SENKRONİZASYONU: PUKÖ tablosundaki bekleyen tüm bildirimleri 'Onaylandı' yap
+        // BİLDİRİM SENKRONİZASYONU: PUKÖ tablosundaki o alt ölçüte ait tüm kayıtları 'Onaylandı' yap
         await supabase
           .from('puko_degerlendirmeleri')
           .update({ durum: 'Onaylandı', red_nedeni: null })
           .eq('alt_olcut_id', resolvedParams.id)
-          .eq('donem_id', selectedPeriod?.id)
-          .eq('durum', 'Beklemede');
+          .eq('donem_id', selectedPeriod?.id);
 
         // Bildirim Ekleme İşlemi
         const { data: { user: currentUser } } = await supabase.auth.getUser();
@@ -516,13 +515,12 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
           .eq('id', currentRecord.id);
         if (error) throw error;
 
-        // BİLDİRİM SENKRONİZASYONU: PUKÖ tablosundaki bekleyen bildirimi 'Reddedildi' yap
+        // BİLDİRİM SENKRONİZASYONU: PUKÖ tablosundaki o alt ölçüte ait tüm kayıtları 'Reddedildi' yap
         await supabase
           .from('puko_degerlendirmeleri')
           .update({ durum: 'Reddedildi', red_nedeni: rejectReason })
           .eq('alt_olcut_id', resolvedParams.id)
-          .eq('donem_id', selectedPeriod?.id)
-          .eq('durum', 'Beklemede');
+          .eq('donem_id', selectedPeriod?.id);
 
         // Bildirim Ekleme İşlemi
         const { data: { user: currentUser } } = await supabase.auth.getUser();

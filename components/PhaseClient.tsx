@@ -91,6 +91,17 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
     if (data && data[0]?.id && !pukoId) {
       setPukoId(data[0].id);
     }
+
+    try {
+      await logAction({
+        supabase,
+        islemTipi: 'UPDATE',
+        tabloAdi: 'puko_degerlendirmeleri',
+        kayitId: data && data[0]?.id ? String(data[0].id) : undefined,
+        yeniVeri: upsertData,
+        detay: `PUKÖ Değerlendirmesi Güncellendi (${phaseId})`
+      });
+    } catch (_) {}
   };
 
   // DOMParser helper to cleanly update inline evidence links and data-evidence-id attributes
