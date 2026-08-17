@@ -1,11 +1,11 @@
 ﻿-- ==============================================================================
--- AKREDÄ°TASYON BÄ°LGÄ° YÃ–NETÄ°M SÄ°STEMÄ° (ABYS) - TEMÄ°Z MASTER KURULUM SQL
--- Kurum: Urfa Ä°lahiyat FakÃ¼ltesi (veya Herhangi Bir Yeni Kurum)
--- AÃ§Ä±klama: TÃ¼m veritabanÄ± tablolarÄ±, RLS politikalarÄ±, fonksiyonlar, trigger'lar
---           ve YÃ–KAK Rubrik ve Olgunluk DÃ¼zeylerini iÃ§eren 59 Alt Ã–lÃ§Ã¼t dahildir.
---           ESKÄ°ÅEHÄ°R'E DAÄ°R HÄ°Ã‡BÄ°R HOCA VERÄ°SÄ° VEYA RAPOR METNÄ° Ä°Ã‡ERMEZ.
---           BU SQL DOSYASI RECURSION-FREE (SONSUZ DÃ–NGÃœSÃœZ) RLS POLÄ°TÄ°KALARINI VE
---           DERS Ä°ZLENCESÄ° UYUMLU ÅEMALARI KURAR.
+-- AKREDİTASYON BİLGİ YÖNETİM SİSTEMİ (ABYS) - TEMİZ MASTER KURULUM SQL
+-- Kurum: İlahiyat Fakültesi (İAA Akreditasyon Standartları)
+-- Açıklama: Tüm veritabanı tabloları, RLS politikaları, fonksiyonlar, trigger'lar
+--           ve İAA Rubrik ve Olgunluk Düzeylerini içeren 58 Alt Ölçüt dahildir.
+--           HİÇBİR KURUMA DAİR HOCA VERİSİ VEYA ÖZEL RAPOR METNİ İÇERMEZ.
+--           BU SQL DOSYASI RECURSION-FREE (SONSUZ DÖNGÜSÜZ) RLS POLİTİKALARINI,
+--           KANIT BENZERSİZLİK KISITLARINI VE DERS İZLENCESİ UYUMLU ŞEMALARI KURAR.
 -- ==============================================================================
 
 -- 1. EKLENTÄ°LER (EXTENSIONS)
