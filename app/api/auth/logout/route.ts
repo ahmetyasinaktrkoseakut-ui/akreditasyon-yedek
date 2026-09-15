@@ -30,6 +30,8 @@ export async function POST() {
       }
     }
 
+    const response = NextResponse.json({ success: true, message: 'Oturum kapatildi.' });
+
     // sb-* ve auth-token içeren tüm oturum çerezlerini kesin olarak temizle
     const allCookies = cookieStore.getAll();
     for (const cookie of allCookies) {
@@ -38,7 +40,17 @@ export async function POST() {
         cookie.name.includes('auth-token') ||
         cookie.name.includes('supabase')
       ) {
-        cookieStore.set(cookie.name, '', {
+        try {
+          cookieStore.set(cookie.name, '', {
+            path: '/',
+            maxAge: 0,
+            expires: new Date(0),
+            sameSite: 'lax',
+            secure: process.env.NODE_ENV === 'production'
+          });
+        } catch (_) {}
+
+        response.cookies.set(cookie.name, '', {
           path: '/',
           maxAge: 0,
           expires: new Date(0),
@@ -48,7 +60,7 @@ export async function POST() {
       }
     }
 
-    return NextResponse.json({ success: true, message: 'Oturum kapatildi.' });
+    return response;
   } catch (error: any) {
     console.error('Logout route error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
