@@ -137,13 +137,14 @@ export async function POST(request: NextRequest) {
     const rawAltOlcutId = formData.get('alt_olcut_id') as string | null;
     const rawResourceId = formData.get('resource_id') as string | null;
     const rawDonemId = formData.get('donem_id') as string | null;
+    const rawDersId = formData.get('ders_id') as string | null;
 
     if (!file) {
       return NextResponse.json({ error: 'Yüklenecek dosya bulunamadı.' }, { status: 400 });
     }
 
     // İzin verilen bucket kontrolü
-    if (bucket !== 'dokumanlar' && bucket !== 'kanit_dosyalari') {
+    if (bucket !== 'dokumanlar' && bucket !== 'kanit_dosyalari' && bucket !== 'sinav_arsivleri') {
       return NextResponse.json({ error: 'Geçersiz depolama alanı.' }, { status: 400 });
     }
 
@@ -160,11 +161,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `.${ext} uzantılı dosya yüklenmesine izin verilmez.` }, { status: 400 });
     }
 
-    // 4. Yetki Denetimi (Ölçüt Ataması ve Dönem Kontrolü)
+    // 4. Yetki Denetimi
     const parsedAltOlcutId = rawAltOlcutId && /^\d+$/.test(rawAltOlcutId.trim()) ? parseInt(rawAltOlcutId.trim(), 10) : null;
     const safeDonemId = rawDonemId && rawDonemId.trim() !== '' ? rawDonemId.trim() : null;
 
-    if (!isAdmin) {
+    if (bucket === 'sinav_arsivleri') {
+      // Genel Sunum Projesi: Oturum açmış her kullanıcı rol, unvan veya e-posta şartı olmaksızın kendi hesabı için ders arşivi yükleyebilir.
+      if (!rawDersId || rawDersId.trim() === '') {
+        return NextResponse.json(
+          { error: 'Ders kodu (ders_id) parametresi zorunludur.' },
+          { status: 400 }
+        );
+      }
+    } else if (!isAdmin) {
       // Normal kullanıcı için alt_olcut_id VE donem_id ZORUNLUDUR!
       // Eksik yetki parametresi ASLA bypass oluşturmaz; doğrudan 403 döner.
       if (!parsedAltOlcutId || !safeDonemId) {
@@ -223,9 +232,15 @@ export async function POST(request: NextRequest) {
     }
 
     // 6. Güvenli Dosya Yolu Üretimi (İstemciye güvenilmez)
-    const prefix = parsedAltOlcutId ? `${parsedAltOlcutId}` : 'doc';
     const randomSuffix = crypto.randomBytes(6).toString('hex');
-    const safeStoragePath = `${prefix}_${Date.now()}_${randomSuffix}.${ext}`;
+    let safeStoragePath: string;
+    if (bucket === 'sinav_arsivleri') {
+      const cleanDers = (rawDersId || 'ders').replace(/[^a-zA-Z0-9_-]/g, '');
+      safeStoragePath = `arsiv_${cleanDers}_${user.id}_${Date.now()}_${randomSuffix}.${ext}`;
+    } else {
+      const prefix = parsedAltOlcutId ? `${parsedAltOlcutId}` : 'doc';
+      safeStoragePath = `${prefix}_${Date.now()}_${randomSuffix}.${ext}`;
+    }
 
     // 7. Supabase Storage'a Yükleme (upsert: false)
     const { error: uploadError } = await supabaseAdmin.storage

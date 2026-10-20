@@ -1,7 +1,7 @@
 -- ==============================================================================
 -- Migration: 20261001_dis_faaliyet_kanitlari.sql
 -- Amaç: Dış faaliyet kanıtı toplama, RLS koruması ve PUKÖ atomik aktarım fonksiyonları.
--- Kapsam: ESOGÜ İlahiyat Fakültesi ABYS (ve gelecekteki sistemler)
+-- Kapsam: ABYS (ve gelecekteki sistemler)
 -- ==============================================================================
 
 -- 1. DIŞ FAALİYET KANITLARI TABLOSU

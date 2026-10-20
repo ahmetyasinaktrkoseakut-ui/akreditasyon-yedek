@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- BKY / ABYS AKREDİTASYON SİSTEMİ - TAM GÜVENLİK SERTLEŞTİRME VE YETKİ KORUMA PAKETİ
--- Kapsam: Canlı Veritabanları (ESOGÜ, HARRAN ve 3. Canlı Sistem)
+-- Kapsam: Canlı Veritabanları ve Sistemler
 -- Sıfır kesinti: Mevcut verileri ve hocaların profillerini/raporlarını asla silmez/bozmaz.
 -- ==============================================================================
 

@@ -2,12 +2,13 @@
 
 import { useState, useEffect, use, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { Loader2, Info, FileSignature, FileText, CheckCircle2, FileSearch, Download, Save, Plus, Link as LinkIcon } from 'lucide-react';
+import { Loader2, Info, FileSignature, FileText, CheckCircle2, FileSearch, Download, Save, Plus, Link as LinkIcon, Tv, Maximize2, Minimize2, ChevronRight, X } from 'lucide-react';
 import StepPanel from '@/components/StepPanel';
 import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
 import { getLocalizedField } from '@/lib/i18n-utils';
 import { usePeriod } from '@/contexts/PeriodContext';
+import { usePresentationMode } from '@/contexts/PresentationModeContext';
 import RichTextEditor, { RichTextEditorRef } from '@/components/RichTextEditor';
 import { logAction } from '@/lib/logger';
 import { validateFileSize, getAssignedLetter, toProxyStorageUrl, sanitizeReportHtmlLinks } from '@/lib/utils';
@@ -49,11 +50,75 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
 
   const t = useTranslations('SelfEvaluation');
   const tPhase = useTranslations('Phase');
+  const tPres = useTranslations('PresentationMode');
   const locale = useLocale();
   const router = useRouter();
   const { selectedPeriod } = usePeriod();
   const editorRef = useRef<RichTextEditorRef>(null);
   const editorEnRef = useRef<RichTextEditorRef>(null);
+
+  const { isPresentationMode, setIsPresentationMode } = usePresentationMode();
+  const [activePreviewDoc, setActivePreviewDoc] = useState<any | null>(null);
+
+  const handlePresentationContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = (e.target as HTMLElement).closest('a, [data-evidence-id], [data-evidence-no]');
+    if (!target) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const evId = target.getAttribute('data-evidence-id');
+    const evNo = target.getAttribute('data-evidence-no');
+    const href = target.getAttribute('href');
+    const text = target.textContent?.trim() || '';
+
+    // 1. data-evidence-id eşleşmesi
+    if (evId) {
+      const found = kanitlar.find(k => (k.evidence_id === evId || k.id === evId));
+      if (found) {
+        setActivePreviewDoc(found);
+        return;
+      }
+    }
+
+    // 2. data-evidence-no eşleşmesi
+    if (evNo) {
+      const found = kanitlar.find(k => String(k.evidence_no) === String(evNo));
+      if (found) {
+        setActivePreviewDoc(found);
+        return;
+      }
+    }
+
+    // 3. Metin içindeki [Kanıt N] veya [Evidence N]
+    const match = text.match(/\[(?:Kanıt|Kanit|Evidence)\s*(\d+)\]/i);
+    if (match && match[1]) {
+      const num = match[1];
+      const found = kanitlar.find(k => String(k.evidence_no) === num);
+      if (found) {
+        setActivePreviewDoc(found);
+        return;
+      }
+    }
+
+    // 4. href URL eşleşmesi
+    if (href) {
+      const cleanHref = href.split('?')[0].split('#')[0];
+      const found = kanitlar.find(k => {
+        if (!k.url) return false;
+        const cleanKUrl = k.url.split('?')[0].split('#')[0];
+        return cleanKUrl === cleanHref || cleanKUrl.endsWith(cleanHref) || cleanHref.endsWith(cleanKUrl);
+      });
+      if (found) {
+        setActivePreviewDoc(found);
+        return;
+      }
+      setActivePreviewDoc({
+        name: text || 'Kanıt Belgesi',
+        url: href,
+      });
+    }
+  };
 
   const fetchData = useCallback(async () => {
     if (!selectedPeriod) return;
@@ -661,6 +726,170 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
     return <div className="h-full flex items-center justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-blue-600" /></div>;
   }
 
+  // 3. Aşama: Denetçi / Sunum Modu Arayüzü (Eşit 2 Panel: Sol ÖDR Metni, Sağ Kanıt Önizleme)
+  if (isPresentationMode) {
+    const currentReportText = locale === 'en' ? raporMetniEn : raporMetni;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const activeUrl = activePreviewDoc?.url ? toProxyStorageUrl(activePreviewDoc.url, origin) : '';
+    const isPdf = !!(activePreviewDoc?.url?.toLowerCase().includes('.pdf') || activePreviewDoc?.name?.toLowerCase().endsWith('.pdf'));
+    const isImage = !!(/\.(png|jpe?g|webp)$/i.test(activePreviewDoc?.url || activePreviewDoc?.name || ''));
+
+    return (
+      <div className="h-screen w-full flex flex-col bg-slate-900 text-slate-800 animate-in fade-in duration-300">
+        {/* Sunum Modu Üst Barı */}
+        <div className="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between text-white shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="px-2.5 py-1 rounded-lg bg-indigo-600 font-mono font-bold text-xs shrink-0">
+              {olcutDetay?.kod || 'ÖLÇÜT'}
+            </span>
+            <h2 className="text-sm font-bold truncate text-slate-200">
+              {[olcutDetay?.kod, getLocalizedField(olcutDetay, 'olcut_adi', locale)].filter(Boolean).join(' ') || `Ölçüt #${resolvedParams.id}`}
+            </h2>
+            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
+              {locale === 'en' ? 'İngilizce (English)' : 'Türkçe'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsPresentationMode(false)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all border border-slate-700 active:scale-95"
+            >
+              <Minimize2 className="w-4 h-4" /> {tPres('exit')}
+            </button>
+          </div>
+        </div>
+
+        {/* İki Eşit Panel */}
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-slate-100">
+          {/* Sol Panel (%50): Salt Okunur ÖDR Metni */}
+          <div className="w-full md:w-1/2 h-1/2 md:h-full bg-white border-r border-slate-200 p-8 lg:p-12 overflow-y-auto">
+            <div className="max-w-3xl mx-auto space-y-6">
+              <div className="border-b border-slate-100 pb-4">
+                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block mb-1">
+                  Denetçi / Sunum Ekranı
+                </span>
+                <h3 className="text-xl font-bold text-slate-900">
+                  Özdeğerlendirme Rapor Metni
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Metin içindeki <span className="font-bold text-orange-600">[Kanıt N]</span> bağlantılarına tıklayarak sağ panelde belgeyi doğrudan inceleyebilirsiniz.
+                </p>
+              </div>
+
+              {currentReportText && currentReportText.trim() !== '' ? (
+                <div
+                  className="prose prose-slate max-w-none text-sm leading-relaxed cursor-pointer select-text"
+                  onClick={handlePresentationContentClick}
+                  dangerouslySetInnerHTML={{ __html: currentReportText }}
+                />
+              ) : (
+                <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl text-slate-500 text-xs">
+                  Bu dil için henüz özdeğerlendirme rapor metni girilmemiştir.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Sağ Panel (%50): Kanıt Önizleme Alanı */}
+          <div className="w-full md:w-1/2 h-1/2 md:h-full flex flex-col bg-slate-100 overflow-hidden">
+            {activePreviewDoc ? (
+              <div className="flex-1 flex flex-col h-full overflow-hidden">
+                {/* Belge Başlığı & İşlemler */}
+                <div className="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 shadow-sm">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span className="text-xs font-bold text-slate-800 truncate">
+                      {activePreviewDoc.evidence_no ? `[Kanıt ${activePreviewDoc.evidence_no}] ` : ''}
+                      {activePreviewDoc.name || 'Kanıt Belgesi'}
+                    </span>
+                  </div>
+                  {activeUrl && (
+                    <a
+                      href={activeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-700 transition-colors shrink-0"
+                    >
+                      <Download className="w-3.5 h-3.5" /> İndir
+                    </a>
+                  )}
+                </div>
+
+                {/* Önizleme Görüntüleyici */}
+                <div className="flex-1 bg-slate-200 overflow-hidden flex items-center justify-center relative">
+                  {isPdf && activeUrl ? (
+                    <iframe
+                      src={`${activeUrl}#toolbar=0`}
+                      className="w-full h-full border-0"
+                      title={activePreviewDoc.name || 'PDF Önizleme'}
+                    />
+                  ) : isImage && activeUrl ? (
+                    <div className="w-full h-full p-6 flex items-center justify-center overflow-auto bg-slate-900/10">
+                      <img
+                        src={activeUrl}
+                        alt={activePreviewDoc.name || 'Kanıt'}
+                        className="max-w-full max-h-full object-contain rounded-xl shadow-lg"
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 shadow-sm max-w-md mx-auto">
+                      <FileText className="w-16 h-16 text-slate-400 mx-auto mb-3" />
+                      <h4 className="text-sm font-bold text-slate-800 mb-1">
+                        Canlı Önizleme Desteklenmiyor
+                      </h4>
+                      <p className="text-xs text-slate-500 mb-4">
+                        Bu dosya türü tarayıcı içi canlı önizlemeyi desteklememektedir. Dosyayı doğrudan bilgisayarınıza indirebilirsiniz.
+                      </p>
+                      {activeUrl && (
+                        <a
+                          href={activeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download
+                          className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md"
+                        >
+                          <Download className="w-4 h-4" /> Dosyayı İndir
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400">
+                <FileSearch className="w-16 h-16 opacity-30 mb-3" />
+                <h4 className="text-sm font-bold text-slate-600 mb-1">Kanıt Önizleme Alanı</h4>
+                <p className="text-xs text-slate-400 max-w-sm mb-6">
+                  Önizlemek için sol paneldeki metin içerisinde yer alan [Kanıt N] bağlantılarına tıklayınız veya aşağıdaki listeden bir kanıt seçiniz.
+                </p>
+                {kanitlar.length > 0 && (
+                  <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl p-4 shadow-sm text-left max-h-60 overflow-y-auto divide-y divide-slate-100">
+                    {kanitlar.map((k, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setActivePreviewDoc(k)}
+                        className="w-full py-2.5 px-3 flex items-center justify-between text-xs hover:bg-slate-50 rounded-lg transition-colors group"
+                      >
+                        <span className="font-bold text-slate-700 group-hover:text-indigo-600 truncate">
+                          {k.evidence_no ? `[Kanıt ${k.evidence_no}] ` : ''}{k.name}
+                        </span>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-8 max-w-[1400px] mx-auto animate-in fade-in duration-500">
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -786,6 +1015,18 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
                   className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2"
                 >
                   <FileSearch className="w-4 h-4" /> {t('re_pull')}
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setIsPresentationMode(true);
+                    if (kanitlar.length > 0 && !activePreviewDoc) {
+                      setActivePreviewDoc(kanitlar[0]);
+                    }
+                  }}
+                  className="bg-indigo-700 hover:bg-indigo-800 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 shadow-sm"
+                >
+                  <Tv className="w-4 h-4" /> {tPres('enter')}
                 </button>
                 {!isReadOnly && (
                   <button 

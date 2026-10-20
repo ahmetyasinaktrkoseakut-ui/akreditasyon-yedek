@@ -1,6 +1,6 @@
 -- Migration: 20260929_atomic_report_rejection.sql
 -- Amaç: Rapor reddetme işlemini ACID transaction içinde atomik yürütmek.
--- Kapsam: HARRAN ABYS, Akreditasyon Yedek ve 39 Taslak
+-- Kapsam: Akreditasyon Bilgi Yönetim Sistemi (ABYS)
 
 CREATE OR REPLACE FUNCTION public.rapor_reddet_atomic(
   p_rapor_id UUID,

@@ -4,14 +4,16 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
-import { Loader2, ChevronRight, AlertCircle } from 'lucide-react';
+import { Loader2, ChevronRight, AlertCircle, CheckCircle2, TrendingUp, Award, Layers } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { getLocalizedField } from '@/lib/i18n-utils';
 import { usePeriod } from '@/contexts/PeriodContext';
 import { getAssignedLetter } from '@/lib/utils';
+import { hesaplaAkreditasyonIlerleme, IlerlemeSonucu } from '@/lib/akreditasyonIlerleme';
 
 export default function OlcutlerPage() {
   const t = useTranslations('Criteria');
+  const tKokpit = useTranslations('Cockpit');
   const { selectedPeriod } = usePeriod();
   const [olcutler, setOlcutler] = useState<any[]>([]);
   const [anaBasliklar, setAnaBasliklar] = useState<any[]>([]);
@@ -19,6 +21,7 @@ export default function OlcutlerPage() {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>('');
+  const [kokpitData, setKokpitData] = useState<IlerlemeSonucu | null>(null);
   const locale = useLocale();
 
   const toggleGroup = (groupKey: string) => {
@@ -82,6 +85,38 @@ export default function OlcutlerPage() {
 
         setOlcutler(finalOlcutler);
 
+        // 3. PUKÖ Verilerini Çek ve Akreditasyon Hazırlık Kokpitini Hesapla
+        let calculatedKapsamTuru: 'kurumsal' | 'koordinator' | 'birim' | 'beklemede' = 'beklemede';
+        let calculatedEkBilgi: string | undefined = undefined;
+
+        if (isAdmin) {
+          calculatedKapsamTuru = 'kurumsal';
+        } else if (hasCoordinatorRecord) {
+          calculatedKapsamTuru = 'koordinator';
+          calculatedEkBilgi = coordData?.[0]?.baslik;
+        } else if (finalOlcutler.length > 0) {
+          calculatedKapsamTuru = 'birim';
+        } else {
+          calculatedKapsamTuru = 'beklemede';
+        }
+
+        if (calculatedKapsamTuru !== 'beklemede' && finalOlcutler.length > 0) {
+          const { data: pukoList } = await supabase
+            .from('puko_degerlendirmeleri')
+            .select('alt_olcut_id, puko_asamasi, durum, donem_id')
+            .eq('donem_id', selectedPeriod.id);
+
+          const sonuc = hesaplaAkreditasyonIlerleme({
+            kapsamdakiOlcutler: finalOlcutler,
+            pukoKayitlari: pukoList || [],
+            kapsamTuru: calculatedKapsamTuru,
+            ekBilgi: calculatedEkBilgi,
+          });
+          setKokpitData(sonuc);
+        } else {
+          setKokpitData(null);
+        }
+
         if (finalOlcutler.length > 0) {
           const assignedLetters = Array.from(new Set(finalOlcutler.map((o: any) => o.kod?.charAt(0)).filter(Boolean)));
           if (assignedLetters.length > 0) {
@@ -103,6 +138,79 @@ export default function OlcutlerPage() {
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <h2 className="text-3xl font-black text-slate-900 mb-8 border-b pb-4">{t('title')}</h2>
+
+      {/* 1. Aşama: Akreditasyon Hazırlık Kokpiti */}
+      {kokpitData && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 lg:p-8 shadow-sm mb-8 transition-all hover:shadow-md">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <h3 className="text-xl font-black text-slate-800 tracking-tight">{tKokpit('title')}</h3>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {tKokpit('active_period')}: <span className="font-bold text-slate-700">{selectedPeriod?.donem_adi}</span> • {kokpitData.kapsamEtiketi}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <span className="text-xs text-slate-400 font-bold block uppercase tracking-wider">{tKokpit('completed_criteria')}</span>
+                <span className="text-lg font-black text-slate-800">
+                  {kokpitData.tamamlananOlcut} <span className="text-slate-400 font-normal text-sm">/ {kokpitData.toplamOlcut} {tKokpit('criteria_unit')}</span>
+                </span>
+              </div>
+              <div className="h-10 w-px bg-slate-200"></div>
+              <div className="text-right">
+                <span className="text-xs text-slate-400 font-bold block uppercase tracking-wider">{tKokpit('general_readiness')}</span>
+                <span className="text-2xl font-black text-blue-600">
+                  %{kokpitData.genelYuzde.toFixed(1)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Genel İlerleme Çubuğu */}
+          <div className="mt-6">
+            <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5">
+              <div 
+                className="bg-blue-600 h-full rounded-full transition-all duration-700 ease-out"
+                style={{ width: `${Math.min(100, Math.max(0, kokpitData.genelYuzde))}%` }}
+              />
+            </div>
+          </div>
+
+          {/* A-E Başlık Dağılımı Kartları */}
+          {kokpitData.basliklar.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-6">
+              {kokpitData.basliklar.map(b => (
+                <div key={b.harf} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 font-black text-xs flex items-center justify-center">
+                      {b.harf}
+                    </span>
+                    <span className="text-xs font-black text-slate-700">
+                      %{b.yuzde.toFixed(1)}
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-semibold text-slate-600 truncate mb-2" title={b.ad}>
+                    {b.ad}
+                  </p>
+                  <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, Math.max(0, b.yuzde))}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-bold mt-2">
+                    {b.tamamlanan}/{b.toplam} Ölçüt
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {errorStatus && (
         <div className="mb-8 p-6 bg-red-600 text-white rounded-2xl flex items-center gap-3">

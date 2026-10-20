@@ -616,5 +616,68 @@
         "reddedildi": "Rejected"
       }
     }
+  },
+  "Cockpit": {
+    "title": "Accreditation Readiness Cockpit",
+    "general_readiness": "Overall Readiness Rate",
+    "completed_criteria": "Completed Sub-Criteria",
+    "active_period": "Selected Period",
+    "header_progress": "Category Progress",
+    "scope_all": "Institutional Criteria Set",
+    "scope_assigned": "Your Assigned Criteria",
+    "scope_category": "Category Scope: {letter}",
+    "criteria_unit": "criteria"
+  },
+  "StressTest": {
+    "title": "PDCA Stress Test",
+    "description": "Validates evidence-citation integrity and methodological risks across the period.",
+    "run_test": "Run Stress Test",
+    "running": "Testing...",
+    "all_clear": "All PDCA phases fully comply with evidence and citation rules.",
+    "risks_found": "Identified Methodological Risks",
+    "phase": "Phase",
+    "criterion": "Sub-Criterion",
+    "explanation_missing": "Explanation text is missing or too short.",
+    "evidence_missing": "Evidence document is not uploaded.",
+    "citation_missing": "Uploaded evidence is not properly cited in the explanation.",
+    "puko_incomplete": "All 5 PDCA phases are not fully approved."
+  },
+  "PresentationMode": {
+    "enter": "Presentation Mode",
+    "exit": "Exit Presentation Mode",
+    "fullscreen": "Fullscreen View",
+    "active": "Presentation Mode Active"
+  },
+  "ExamArchive": {
+    "title": "Exam & Evaluation Archive",
+    "description": "Archive of exam questions, answer keys and sample student papers complying with Bologna standards.",
+    "confidential_note": "This archive is confidential; only the course instructor and authorized managers can access it.",
+    "midterm_questions": "Midterm Exam Questions",
+    "final_questions": "Final Exam Questions",
+    "answer_key": "Answer Key & Grading Rubric",
+    "student_papers": "Sample Student Papers (Highest / Average / Lowest)",
+    "upload_file": "Upload File",
+    "delete_file": "Delete File",
+    "level_high": "Highest Score",
+    "level_mid": "Average Score",
+    "level_low": "Lowest Score",
+    "badge": "Confidential Corporate Archive",
+    "instructor_archive_select": "Instructor Archive:",
+    "archive_updating": "Updating Archive...",
+    "not_uploaded_yet": "Not uploaded yet",
+    "download": "Download",
+    "remove": "Remove",
+    "uploading": "Uploading...",
+    "upload_question_file": "Upload Question File",
+    "upload_answer_key": "Upload Answer Key",
+    "upload_sample_paper": "Upload Sample Paper",
+    "midterm_desc": "Midterm exam paper (Single file - PDF/Word)",
+    "final_desc": "Final exam paper (Single file)",
+    "answer_key_desc": "Official answer key or scoring rubric",
+    "student_papers_desc": "Up to 3 anonymized samples (High, Medium, Low)",
+    "delete_confirm": "Are you sure you want to delete this archive document?",
+    "delete_failed": "Could not delete file from storage. Operation aborted.",
+    "delete_success": "Document removed from storage and archive.",
+    "upload_success": "Document uploaded successfully."
   }
 }

@@ -30,14 +30,14 @@ export default async function DersIzlenceleriPage({ searchParams }: { searchPara
 
   // Yetki Kontrolü: 
   // 1. Yönetici veya Birim Sorumlusu ise doğrudan izin ver
-  // 2. @harran.edu.tr e-posta uzantılı öğretim elemanı ise ölçüt almasa bile izlence doldurabilsin
+  // 2. Öğretim elemanı ise ölçüt almasa bile izlence doldurabilsin
   const userRole = (profile?.rol || '').toLowerCase();
   // Daha kapsayıcı Regex kontrolü (Türkçe karakter ve farklı yazım türleri için)
   const isYonetici = /admin|yonetici|yönetici|manager/i.test(userRole);
   const isBirimSorumlusu = /birim/i.test(userRole);
-  const isHarranTeacher = email.endsWith('@harran.edu.tr') || email.includes('harran.edu.tr');
+  const isOgretimElemani = /ogretim|öğretim|hoca|personel/i.test(userRole);
 
-  if (!isYonetici && !isBirimSorumlusu && !isHarranTeacher) {
+  if (!isYonetici && !isBirimSorumlusu && !isOgretimElemani) {
     // Yetkisi yoksa genel izlenceler (sadece görüntüleme) sayfasına yönlendir
     redirect(`/izlenceler/${kod}`);
   }

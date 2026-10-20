@@ -45,6 +45,7 @@
   --text-muted: #64748b;
   --header-bg: #ffffff;
   --sidebar-bg: #0f172a;
+  --font-geist-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .dark {

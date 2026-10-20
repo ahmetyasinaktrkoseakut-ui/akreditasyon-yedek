@@ -615,5 +615,68 @@
         "reddedildi": "Reddedildi"
       }
     }
+  },
+  "Cockpit": {
+    "title": "Akreditasyon Hazırlık Kokpiti",
+    "general_readiness": "Genel Hazırlık Oranı",
+    "completed_criteria": "Tamamlanan Alt Ölçüt",
+    "active_period": "Seçili Dönem",
+    "header_progress": "Başlık Bazlı İlerleme",
+    "scope_all": "Kurumsal Ölçüt Kümesi",
+    "scope_assigned": "Atanan Ölçütleriniz",
+    "scope_category": "Başlık Kapsamı: {letter}",
+    "criteria_unit": "ölçüt"
+  },
+  "StressTest": {
+    "title": "PUKÖ Stres Testi",
+    "description": "Dönem verilerindeki kanıt-atıf bütünlüğünü ve metodolojik riskleri denetler.",
+    "run_test": "Stres Testini Başlat",
+    "running": "Test Yapılıyor...",
+    "all_clear": "Tüm PUKÖ aşamaları kanıt ve atıf kurallarına tam uyumlu.",
+    "risks_found": "Tespit Edilen Metodolojik Riskler",
+    "phase": "Aşama",
+    "criterion": "Alt Ölçüt",
+    "explanation_missing": "Açıklama metni girilmemiş veya çok kısa.",
+    "evidence_missing": "Kanıt belgesi yüklenmemiş.",
+    "citation_missing": "Yüklenen kanıtlara açıklama metninde usulüne uygun atıf yapılmamış.",
+    "puko_incomplete": "5 PUKÖ aşaması eksiksiz onaylanmamış."
+  },
+  "PresentationMode": {
+    "enter": "Sunum Modu",
+    "exit": "Sunum Modundan Çık",
+    "fullscreen": "Tam Ekran Görünüm",
+    "active": "Sunum Modu Aktif"
+  },
+  "ExamArchive": {
+    "title": "Sınav ve Değerlendirme Arşivi",
+    "description": "Bologna ve akreditasyon standartlarına uygun sınav soruları, cevap anahtarı ve öğrenci örnek kağıtları arşivi.",
+    "confidential_note": "Bu arşiv gizlidir; yalnızca dersin öğretim elemanı ve yetkili yöneticiler tarafından görüntülenebilir. Öğrencilere veya genel erişime kapalıdır.",
+    "midterm_questions": "Vize Sınav Soruları",
+    "final_questions": "Final Sınav Soruları",
+    "answer_key": "Cevap Anahtarı ve Değerlendirme Rubriği",
+    "student_papers": "Örnek Öğrenci Kağıtları (En Yüksek / Orta / En Düşük)",
+    "upload_file": "Dosya Yükle",
+    "delete_file": "Dosyayı Sil",
+    "level_high": "En Yüksek Başarı",
+    "level_mid": "Orta Başarı",
+    "level_low": "En Düşük Başarı",
+    "badge": "Gizli Kurumsal Arşiv",
+    "instructor_archive_select": "Öğretim Elemanı Arşivi:",
+    "archive_updating": "Arşiv Güncelleniyor...",
+    "not_uploaded_yet": "Henüz yüklenmedi",
+    "download": "İndir",
+    "remove": "Kaldır",
+    "uploading": "Yükleniyor...",
+    "upload_question_file": "Soru Dosyası Yükle",
+    "upload_answer_key": "Cevap Anahtarı Yükle",
+    "upload_sample_paper": "Örnek Kağıt Yükle",
+    "midterm_desc": "Ara sınav soru kitapçığı (Tek dosya - PDF/Word)",
+    "final_desc": "Yarıyıl sonu sınavı soru kitapçığı (Tek dosya)",
+    "answer_key_desc": "Resmi değerlendirme anahtarı veya puanlama baremi",
+    "student_papers_desc": "En fazla 3 adet anonimleştirilmiş örnek (Yüksek, Orta, Düşük)",
+    "delete_confirm": "Bu arşiv belgesini silmek istediğinize emin misiniz?",
+    "delete_failed": "Dosya depodan silinemedi. İşlem iptal edildi.",
+    "delete_success": "Belge depodan ve arşivden kaldırıldı.",
+    "upload_success": "Belge başarıyla yüklendi."
   }
 }

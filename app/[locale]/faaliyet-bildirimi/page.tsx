@@ -252,7 +252,7 @@ export default function FaaliyetBildirimiPage() {
                 </label>
                 <input
                   type="email"
-                  placeholder="Örn: hoca@ogu.edu.tr"
+                  placeholder="Örn: hoca@universite.edu.tr"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   className="w-full text-sm px-3.5 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition-colors"

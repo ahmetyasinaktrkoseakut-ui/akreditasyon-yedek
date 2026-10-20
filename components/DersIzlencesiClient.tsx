@@ -7,9 +7,12 @@ import {
   Save, ArrowLeft, Plus, Trash2, 
   BookOpen, Clock, Target, ListChecks, 
   FileText, BarChart3, Settings, ShieldCheck,
-  ChevronRight, ChevronLeft, GraduationCap, Check
+  ChevronRight, ChevronLeft, GraduationCap, Check,
+  Lock, Upload, Download, Eye, FileCheck, AlertCircle, Loader2
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { usePeriod } from '@/contexts/PeriodContext';
+import { useTranslations } from 'next-intl';
 
 interface Course {
   kod: string;
@@ -22,6 +25,27 @@ interface Course {
   dil: string;
   yariyil: string;
   tur: string;
+}
+
+interface SinavDosyasi {
+  name: string;
+  url: string;
+  storagePath?: string;
+  size?: number;
+  mime_type?: string;
+  uploaded_at?: string;
+}
+
+interface OgrenciKagidi extends SinavDosyasi {
+  duzey: 'en_yuksek' | 'orta' | 'en_dusuk';
+}
+
+interface SinavArsiviState {
+  id?: string;
+  vize_sorulari: SinavDosyasi | null;
+  final_sorulari: SinavDosyasi | null;
+  cevap_anahtari: SinavDosyasi | null;
+  ogrenci_kagitlari: OgrenciKagidi[];
 }
 
 const DEFAULT_POLICIES = `• Ders Süresi ve İşleyişi: Ders toplamda 3 saat sürecek şekilde planlanmıştır ve 1 saatlik iki blok halinde işlenecektir. Bloklar arasında 15 dakikalık bir ara verilecektir.
@@ -88,10 +112,270 @@ export default function DersIzlencesiClient({
   defaultOgretimElemani: string;
   defaultEposta: string;
 }) {
+  const tArsiv = useTranslations('ExamArchive');
+  const { selectedPeriod } = usePeriod();
   const [activeStep, setActiveStep] = useState(1);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [formData, setFormData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+
+  // Sınav ve Değerlendirme Arşivi State
+  const [sinavArsivi, setSinavArsivi] = useState<SinavArsiviState>({
+    vize_sorulari: null,
+    final_sorulari: null,
+    cevap_anahtari: null,
+    ogrenci_kagitlari: [],
+  });
+  const [arsivListesi, setArsivListesi] = useState<any[]>([]);
+  const [selectedHocaId, setSelectedHocaId] = useState<string>(currentUserId);
+  const [arsivLoading, setArsivLoading] = useState(false);
+  const [arsivSaving, setArsivSaving] = useState(false);
+  const [uploadingField, setUploadingField] = useState<string | null>(null);
+
+  // Arşiv Verilerini Çek (Birden fazla hoca desteği - maybeSingle hatası önlendi)
+  useEffect(() => {
+    async function fetchArsiv() {
+      if (!selectedCourse?.kod) return;
+      setArsivLoading(true);
+      try {
+        let query = supabase
+          .from('ders_sinav_arsivi')
+          .select('*, profiller:hoca_id(id, tam_adi, email)')
+          .eq('ders_id', selectedCourse.kod);
+
+        if (selectedPeriod?.id) {
+          query = query.eq('donem_id', selectedPeriod.id);
+        }
+
+        const { data: rows, error } = await query;
+
+        if (error) {
+          // Tablo Supabase üzerinde henüz oluşturulmamışsa sessizce geç
+          if (error.code !== 'PGRST205') {
+            console.error('Sınav arşivi çekilemedi:', error);
+          }
+          return;
+        }
+
+        const allRows = Array.isArray(rows) ? rows : [];
+        setArsivListesi(allRows);
+
+        let activeRecord = allRows.find(r => r.hoca_id === selectedHocaId);
+        if (!activeRecord && allRows.length > 0) {
+          const ownRecord = allRows.find(r => r.hoca_id === currentUserId);
+          activeRecord = ownRecord || allRows[0];
+          setSelectedHocaId(activeRecord.hoca_id);
+        }
+
+        if (activeRecord) {
+          setSinavArsivi({
+            id: activeRecord.id,
+            vize_sorulari: activeRecord.vize_sorulari || null,
+            final_sorulari: activeRecord.final_sorulari || null,
+            cevap_anahtari: activeRecord.cevap_anahtari || null,
+            ogrenci_kagitlari: Array.isArray(activeRecord.ogrenci_kagitlari) ? activeRecord.ogrenci_kagitlari : [],
+          });
+        } else {
+          setSinavArsivi({
+            vize_sorulari: null,
+            final_sorulari: null,
+            cevap_anahtari: null,
+            ogrenci_kagitlari: [],
+          });
+        }
+      } catch (e) {
+        console.warn('Sınav arşivi yükleme hatası:', e);
+      } finally {
+        setArsivLoading(false);
+      }
+    }
+    fetchArsiv();
+  }, [selectedCourse, selectedPeriod, currentUserId]);
+
+  const handleHocaArsivChange = (targetHocaId: string) => {
+    setSelectedHocaId(targetHocaId);
+    const targetRecord = arsivListesi.find(r => r.hoca_id === targetHocaId);
+    if (targetRecord) {
+      setSinavArsivi({
+        id: targetRecord.id,
+        vize_sorulari: targetRecord.vize_sorulari || null,
+        final_sorulari: targetRecord.final_sorulari || null,
+        cevap_anahtari: targetRecord.cevap_anahtari || null,
+        ogrenci_kagitlari: Array.isArray(targetRecord.ogrenci_kagitlari) ? targetRecord.ogrenci_kagitlari : [],
+      });
+    } else {
+      setSinavArsivi({
+        vize_sorulari: null,
+        final_sorulari: null,
+        cevap_anahtari: null,
+        ogrenci_kagitlari: [],
+      });
+    }
+  };
+
+  // Arşivi Veritabanına Otomatik Kaydet
+  const autoSaveArsiv = async (arsivToSave: SinavArsiviState) => {
+    if (!selectedCourse?.kod) return;
+    setArsivSaving(true);
+    try {
+      const payload: Record<string, any> = {
+        ders_id: selectedCourse.kod,
+        hoca_id: currentUserId,
+        donem_id: selectedPeriod?.id || null,
+        vize_sorulari: arsivToSave.vize_sorulari,
+        final_sorulari: arsivToSave.final_sorulari,
+        cevap_anahtari: arsivToSave.cevap_anahtari,
+        ogrenci_kagitlari: arsivToSave.ogrenci_kagitlari,
+        guncelleme_tarihi: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('ders_sinav_arsivi')
+        .upsert(payload, { onConflict: 'ders_id,hoca_id,donem_id' })
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        if (error.code === 'PGRST205') {
+          toast.error('Veritabanında ders_sinav_arsivi tablosu henüz mevcut değil.');
+          return;
+        }
+        throw error;
+      }
+      if (data?.id) {
+        setSinavArsivi(prev => ({ ...prev, id: data.id }));
+      }
+    } catch (err: any) {
+      console.error('Arşiv kayıt hatası:', err);
+      toast.error('Arşiv güncellenirken hata oluştu.');
+    } finally {
+      setArsivSaving(false);
+    }
+  };
+
+  // Arşive Dosya Yükle
+  const handleArsivUpload = async (
+    field: 'vize_sorulari' | 'final_sorulari' | 'cevap_anahtari' | 'ogrenci_kagitlari',
+    event: React.ChangeEvent<HTMLInputElement>,
+    duzey?: 'en_yuksek' | 'orta' | 'en_dusuk'
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedCourse?.kod) return;
+
+    if (field === 'ogrenci_kagitlari' && sinavArsivi.ogrenci_kagitlari.length >= 3 && !duzey) {
+      toast.error('En fazla 3 adet öğrenci kağıdı yükleyebilirsiniz.');
+      return;
+    }
+
+    setUploadingField(duzey ? `${field}_${duzey}` : field);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('bucket', 'sinav_arsivleri');
+      formData.append('resource_type', 'sinav_arsivi');
+      formData.append('ders_id', selectedCourse.kod);
+      if (selectedPeriod?.id) {
+        formData.append('donem_id', selectedPeriod.id);
+      }
+
+      const res = await fetch('/api/storage/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Dosya yüklenemedi.');
+      }
+
+      const fileMeta: SinavDosyasi = {
+        name: file.name,
+        url: data.url,
+        storagePath: data.storagePath,
+        size: data.size,
+        mime_type: file.type || 'application/octet-stream',
+        uploaded_at: new Date().toISOString(),
+      };
+
+      if (field === 'ogrenci_kagitlari') {
+        const targetDuzey = duzey || (
+          sinavArsivi.ogrenci_kagitlari.some(k => k.duzey === 'en_yuksek')
+            ? (sinavArsivi.ogrenci_kagitlari.some(k => k.duzey === 'orta') ? 'en_dusuk' : 'orta')
+            : 'en_yuksek'
+        );
+
+        const updatedList = [
+          ...sinavArsivi.ogrenci_kagitlari.filter(k => k.duzey !== targetDuzey),
+          { ...fileMeta, duzey: targetDuzey },
+        ];
+        const newArsiv = { ...sinavArsivi, ogrenci_kagitlari: updatedList };
+        setSinavArsivi(newArsiv);
+        await autoSaveArsiv(newArsiv);
+      } else {
+        const newArsiv = { ...sinavArsivi, [field]: fileMeta };
+        setSinavArsivi(newArsiv);
+        await autoSaveArsiv(newArsiv);
+      }
+
+      toast.success(tArsiv('upload_success'));
+    } catch (err: any) {
+      console.error('Yükleme hatası:', err);
+      toast.error(err.message || 'Yükleme başarısız oldu.');
+    } finally {
+      setUploadingField(null);
+      if (event.target) event.target.value = '';
+    }
+  };
+
+  // Arşivden Dosya Sil (Fiziksel storage ve veritabanı senkronize)
+  const handleArsivDelete = async (
+    field: 'vize_sorulari' | 'final_sorulari' | 'cevap_anahtari' | 'ogrenci_kagitlari',
+    duzey?: 'en_yuksek' | 'orta' | 'en_dusuk'
+  ) => {
+    if (!confirm(tArsiv('delete_confirm'))) return;
+
+    let targetDoc: SinavDosyasi | null = null;
+    if (field === 'ogrenci_kagitlari' && duzey) {
+      targetDoc = sinavArsivi.ogrenci_kagitlari.find(k => k.duzey === duzey) || null;
+    } else if (field !== 'ogrenci_kagitlari') {
+      targetDoc = sinavArsivi[field];
+    }
+
+    // 1. Fiziksel Depo ve Yetkilendirme Temizliği (Hata durumunda işlem derhal durdurulur)
+    if (targetDoc?.url) {
+      try {
+        const delRes = await fetch('/api/storage/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bucket: 'sinav_arsivleri',
+            storagePath: targetDoc.storagePath,
+            url: targetDoc.url,
+          }),
+        });
+        const delData = await delRes.json();
+        if (!delRes.ok || !delData.success) {
+          toast.error(delData.error || tArsiv('delete_failed'));
+          return;
+        }
+      } catch (delErr: any) {
+        console.error('Fiziksel dosya silme hatası:', delErr);
+        toast.error('Dosya silinirken sunucuyla bağlantı kurulamadı. İşlem durduruldu.');
+        return;
+      }
+    }
+
+    // 2. State ve Veritabanı Güncellemesi (Yalnızca depo silme başarılı olduysa çalışır)
+    let newArsiv = { ...sinavArsivi };
+    if (field === 'ogrenci_kagitlari' && duzey) {
+      newArsiv.ogrenci_kagitlari = sinavArsivi.ogrenci_kagitlari.filter(k => k.duzey !== duzey);
+    } else if (field !== 'ogrenci_kagitlari') {
+      newArsiv[field] = null;
+    }
+    setSinavArsivi(newArsiv);
+    await autoSaveArsiv(newArsiv);
+    toast.success(tArsiv('delete_success'));
+  };
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -569,6 +853,315 @@ export default function DersIzlencesiClient({
           <button onClick={() => setActiveStep(prev => Math.min(5, prev + 1))} disabled={activeStep === 5} className="flex items-center gap-2 text-slate-500 hover:text-blue-600 font-black text-[10px] px-4 py-2 disabled:opacity-30 transition-colors uppercase tracking-widest">
             Sonraki Sayfa <ChevronRight className="w-4 h-4" />
           </button>
+        </div>
+
+        {/* 4. Aşama: Sınav ve Değerlendirme Arşivi (Korumalı Kurumsal Alan) */}
+        <div className="mt-12 bg-white rounded-3xl border border-slate-200 shadow-sm p-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-center shadow-sm">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <h3 className="text-base font-black text-slate-900 tracking-tight">
+                  {tArsiv('title')}
+                </h3>
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200 uppercase tracking-wider">
+                  {tArsiv('badge')}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {tArsiv('confidential_note')}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {arsivListesi.length > 1 && (
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+                  <span className="text-xs font-bold text-slate-600">{tArsiv('instructor_archive_select')}</span>
+                  <select
+                    value={selectedHocaId}
+                    onChange={e => handleHocaArsivChange(e.target.value)}
+                    className="text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2 py-1 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    {arsivListesi.map(item => (
+                      <option key={item.hoca_id} value={item.hoca_id}>
+                        {item.profiller?.tam_adi || item.profiller?.email || item.hoca_id.substring(0, 8)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {arsivSaving && (
+                <div className="flex items-center gap-2 text-xs font-bold text-blue-600">
+                  <Loader2 className="w-4 h-4 animate-spin" /> {tArsiv('archive_updating')}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+            {/* 1. Vize Soruları */}
+            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider">{tArsiv('midterm_questions')}</span>
+                  <FileText className="w-4 h-4 text-blue-600" />
+                </div>
+                <p className="text-[11px] text-slate-500 mb-4">{tArsiv('midterm_desc')}</p>
+                {sinavArsivi.vize_sorulari ? (
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 mb-4">
+                    <p className="text-xs font-bold text-slate-800 truncate" title={sinavArsivi.vize_sorulari.name}>
+                      {sinavArsivi.vize_sorulari.name}
+                    </p>
+                    <span className="text-[10px] text-slate-400 block mt-1">
+                      {sinavArsivi.vize_sorulari.size ? `${sinavArsivi.vize_sorulari.size} KB` : ''}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl border border-dashed border-slate-300 text-center text-slate-400 text-xs mb-4">
+                    {tArsiv('not_uploaded_yet')}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {sinavArsivi.vize_sorulari ? (
+                  <>
+                    <a
+                      href={sinavArsivi.vize_sorulari.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      className="flex-1 py-2 px-3 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-bold text-center transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Download className="w-3.5 h-3.5" /> {tArsiv('download')}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleArsivDelete('vize_sorulari')}
+                      className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                      title={tArsiv('remove')}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </>
+                ) : (
+                  <label className="flex-1 cursor-pointer">
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.doc,.docx"
+                      onChange={e => handleArsivUpload('vize_sorulari', e)}
+                      disabled={uploadingField === 'vize_sorulari'}
+                    />
+                    <span className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold text-center block transition-all shadow-sm">
+                      {uploadingField === 'vize_sorulari' ? tArsiv('uploading') : tArsiv('upload_question_file')}
+                    </span>
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* 2. Final Soruları */}
+            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider">{tArsiv('final_questions')}</span>
+                  <FileText className="w-4 h-4 text-emerald-600" />
+                </div>
+                <p className="text-[11px] text-slate-500 mb-4">{tArsiv('final_desc')}</p>
+                {sinavArsivi.final_sorulari ? (
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 mb-4">
+                    <p className="text-xs font-bold text-slate-800 truncate" title={sinavArsivi.final_sorulari.name}>
+                      {sinavArsivi.final_sorulari.name}
+                    </p>
+                    <span className="text-[10px] text-slate-400 block mt-1">
+                      {sinavArsivi.final_sorulari.size ? `${sinavArsivi.final_sorulari.size} KB` : ''}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl border border-dashed border-slate-300 text-center text-slate-400 text-xs mb-4">
+                    {tArsiv('not_uploaded_yet')}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {sinavArsivi.final_sorulari ? (
+                  <>
+                    <a
+                      href={sinavArsivi.final_sorulari.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      className="flex-1 py-2 px-3 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl text-xs font-bold text-center transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Download className="w-3.5 h-3.5" /> {tArsiv('download')}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleArsivDelete('final_sorulari')}
+                      className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                      title={tArsiv('remove')}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </>
+                ) : (
+                  <label className="flex-1 cursor-pointer">
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.doc,.docx"
+                      onChange={e => handleArsivUpload('final_sorulari', e)}
+                      disabled={uploadingField === 'final_sorulari'}
+                    />
+                    <span className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold text-center block transition-all shadow-sm">
+                      {uploadingField === 'final_sorulari' ? tArsiv('uploading') : tArsiv('upload_question_file')}
+                    </span>
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* 3. Cevap Anahtarı */}
+            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider">{tArsiv('answer_key')}</span>
+                  <FileCheck className="w-4 h-4 text-purple-600" />
+                </div>
+                <p className="text-[11px] text-slate-500 mb-4">{tArsiv('answer_key_desc')}</p>
+                {sinavArsivi.cevap_anahtari ? (
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 mb-4">
+                    <p className="text-xs font-bold text-slate-800 truncate" title={sinavArsivi.cevap_anahtari.name}>
+                      {sinavArsivi.cevap_anahtari.name}
+                    </p>
+                    <span className="text-[10px] text-slate-400 block mt-1">
+                      {sinavArsivi.cevap_anahtari.size ? `${sinavArsivi.cevap_anahtari.size} KB` : ''}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl border border-dashed border-slate-300 text-center text-slate-400 text-xs mb-4">
+                    {tArsiv('not_uploaded_yet')}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {sinavArsivi.cevap_anahtari ? (
+                  <>
+                    <a
+                      href={sinavArsivi.cevap_anahtari.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      className="flex-1 py-2 px-3 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-xl text-xs font-bold text-center transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Download className="w-3.5 h-3.5" /> {tArsiv('download')}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleArsivDelete('cevap_anahtari')}
+                      className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                      title={tArsiv('remove')}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </>
+                ) : (
+                  <label className="flex-1 cursor-pointer">
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.doc,.docx"
+                      onChange={e => handleArsivUpload('cevap_anahtari', e)}
+                      disabled={uploadingField === 'cevap_anahtari'}
+                    />
+                    <span className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold text-center block transition-all shadow-sm">
+                      {uploadingField === 'cevap_anahtari' ? tArsiv('uploading') : tArsiv('upload_answer_key')}
+                    </span>
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* 4. Öğrenci Kağıtları (En fazla 3 dosya: En Yüksek, Orta, En Düşük) */}
+            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider">{tArsiv('student_papers')}</span>
+                  <GraduationCap className="w-4 h-4 text-orange-600" />
+                </div>
+                <p className="text-[11px] text-slate-500 mb-3">{tArsiv('student_papers_desc')}</p>
+
+                <div className="space-y-2 mb-4">
+                  {(['en_yuksek', 'orta', 'en_dusuk'] as const).map(duzey => {
+                    const existingKagit = sinavArsivi.ogrenci_kagitlari.find(k => k.duzey === duzey);
+                    const duzeyLabels: Record<string, { label: string; color: string }> = {
+                      en_yuksek: { label: tArsiv('level_high'), color: 'bg-emerald-100 text-emerald-800' },
+                      orta: { label: tArsiv('level_mid'), color: 'bg-blue-100 text-blue-800' },
+                      en_dusuk: { label: tArsiv('level_low'), color: 'bg-amber-100 text-amber-800' },
+                    };
+
+                    return (
+                      <div key={duzey} className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${duzeyLabels[duzey].color}`}>
+                            {duzeyLabels[duzey].label}
+                          </span>
+                          {existingKagit ? (
+                            <p className="text-[11px] font-bold text-slate-800 truncate mt-1" title={existingKagit.name}>
+                              {existingKagit.name}
+                            </p>
+                          ) : (
+                            <p className="text-[11px] text-slate-400 italic mt-1">{tArsiv('not_uploaded_yet')}</p>
+                          )}
+                        </div>
+
+                        {existingKagit ? (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <a
+                              href={existingKagit.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download
+                              className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors"
+                              title={tArsiv('download')}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => handleArsivDelete('ogrenci_kagitlari', duzey)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title={tArsiv('remove')}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="cursor-pointer shrink-0">
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept=".pdf,.png,.jpg,.jpeg"
+                              onChange={e => handleArsivUpload('ogrenci_kagitlari', e, duzey)}
+                              disabled={uploadingField === `ogrenci_kagitlari_${duzey}`}
+                            />
+                            <span className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[10px] font-bold transition-all block">
+                              {uploadingField === `ogrenci_kagitlari_${duzey}` ? tArsiv('uploading') : `+ ${tArsiv('upload_file')}`}
+                            </span>
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

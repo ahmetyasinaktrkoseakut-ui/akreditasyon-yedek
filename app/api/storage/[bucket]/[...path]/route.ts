@@ -17,7 +17,7 @@ async function handleStorageProxy(
     }
 
     // Sadece izin verilen bucket'lar
-    if (bucket !== 'dokumanlar' && bucket !== 'kanit_dosyalari') {
+    if (bucket !== 'dokumanlar' && bucket !== 'kanit_dosyalari' && bucket !== 'sinav_arsivleri') {
       return NextResponse.json({ error: 'Gecersiz depolama alani.' }, { status: 403 });
     }
 
@@ -84,7 +84,25 @@ async function handleStorageProxy(
     let hasAccess = isAdmin || isObserver;
     const decodedPath = decodeURIComponent(filePath);
 
-    if (!hasAccess) {
+    // Özel Sınav ve Değerlendirme Arşivi Koruması: Sadece ilgili dosya sahibi kullanıcı ve yöneticiler görebilir.
+    if (bucket === 'sinav_arsivleri') {
+      if (isAdmin) {
+        hasAccess = true;
+      } else {
+        const { data: mapping } = await supabaseAdmin
+          .from('dosya_yetkilendirmeleri')
+          .select('owner_id')
+          .eq('bucket', 'sinav_arsivleri')
+          .eq('storage_path', decodedPath)
+          .maybeSingle();
+
+        hasAccess = mapping?.owner_id === user.id;
+      }
+
+      if (!hasAccess) {
+        return NextResponse.json({ error: 'Bu sınav arşiv dosyasına erişim yetkiniz bulunmamaktadır.' }, { status: 403 });
+      }
+    } else if (!hasAccess) {
       // Birim Sorumlusu veya standart kullanici: dosya_yetkilendirmeleri uzerinden katı denetle
       const { data: mapping } = await supabaseAdmin
         .from('dosya_yetkilendirmeleri')

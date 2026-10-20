@@ -23,9 +23,9 @@ export default async function IzlencelerPage() {
     // Daha kapsayıcı Regex kontrolü (Türkçe karakter ve farklı yazım türleri için)
     const isYonetici = /admin|yonetici|yönetici|manager/i.test(userRole);
     const isBirimSorumlusu = /birim/i.test(userRole);
-    const isHarranTeacher = email.endsWith('@harran.edu.tr') || email.includes('harran.edu.tr');
+    const isOgretimElemani = /ogretim|öğretim|hoca|personel/i.test(userRole);
     
-    isAuthorizedToEdit = isYonetici || isBirimSorumlusu || isHarranTeacher;
+    isAuthorizedToEdit = isYonetici || isBirimSorumlusu || isOgretimElemani;
   }
 
   // Tüm dersleri ve izlenceleri çek
