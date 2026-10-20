@@ -8,7 +8,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, 
 import { useRouter } from '@/i18n/routing';
 import { useTranslations } from 'next-intl';
 import { usePeriod } from '@/contexts/PeriodContext';
-import { calistirPukoStresTesti, StresTestiSonucu, PUKO_ASAMALARI } from '@/lib/pukoStresTesti';
+import { calistirPukoStresTesti, StresTestiSonucu } from '@/lib/pukoStresTesti';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 export default function IzlemePage() {
@@ -33,7 +33,7 @@ export default function IzlemePage() {
   const [isStressModalOpen, setIsStressModalOpen] = useState(false);
   const [isTestingStress, setIsTestingStress] = useState(false);
   const [stressResults, setStressResults] = useState<StresTestiSonucu | null>(null);
-  const [stressActiveTab, setStressActiveTab] = useState<'bos' | 'kanitsiz' | 'atifsiz'>('bos');
+  const [stressActiveTab, setStressActiveTab] = useState<'odryok' | 'kanitfark'>('odryok');
 
   useEffect(() => {
     async function fetchStats() {
@@ -192,7 +192,7 @@ export default function IzlemePage() {
     if (!selectedPeriod) return;
     setIsTestingStress(true);
     try {
-      const [{ data: pukoList }, { data: altList }] = await Promise.all([
+      const [{ data: pukoList }, { data: altList }, { data: odrList }] = await Promise.all([
         supabase
           .from('puko_degerlendirmeleri')
           .select('alt_olcut_id, durum, puko_asamasi, kanit_dosyalari, aciklama, donem_id')
@@ -200,14 +200,21 @@ export default function IzlemePage() {
         supabase
           .from('alt_olcutler')
           .select('id, kod, olcut_adi')
-          .order('kod')
+          .order('kod'),
+        supabase
+          .from('ozdegerlendirme_raporlari')
+          .select('alt_olcut_id, icerik, kanitlar, onay_durumu, donem_id')
+          .eq('donem_id', selectedPeriod.id),
       ]);
 
-      const result = calistirPukoStresTesti(pukoList || [], altList || []);
+      const result = calistirPukoStresTesti({
+        altOlcutler: altList || [],
+        pukoListesi: pukoList || [],
+        odrListesi: odrList || [],
+      });
       setStressResults(result);
-      if (result.bosAsamalar.length > 0) setStressActiveTab('bos');
-      else if (result.metinVarKanitYok.length > 0) setStressActiveTab('kanitsiz');
-      else setStressActiveTab('atifsiz');
+      if (result.odrAlinmamisOlcutler.length > 0) setStressActiveTab('odryok');
+      else setStressActiveTab('kanitfark');
 
       setIsStressModalOpen(true);
     } catch (err) {
@@ -423,53 +430,37 @@ export default function IzlemePage() {
             </button>
           </DialogHeader>
 
-          {/* Sekmeler */}
+          {/* Sekmeler: Ölçüt Bazlı 2 Temel Kategori */}
           <div className="flex border-b border-slate-200 bg-slate-50 px-6 pt-3 gap-2 shrink-0 overflow-x-auto">
             <button
-              onClick={() => setStressActiveTab('bos')}
+              onClick={() => setStressActiveTab('odryok')}
               className={`pb-3 px-4 text-xs font-bold transition-colors border-b-2 flex items-center gap-2 shrink-0 ${
-                stressActiveTab === 'bos'
-                  ? 'border-red-600 text-red-600'
+                stressActiveTab === 'odryok'
+                  ? 'border-indigo-600 text-indigo-600'
                   : 'border-transparent text-slate-500 hover:text-slate-700'
               }`}
             >
-              <span>1. Boş PUKÖ Aşamaları</span>
+              <span>1. ÖDR'ye Alınmamış Ölçütler</span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                (stressResults?.bosAsamalar.length || 0) > 0 ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-600'
+                (stressResults?.odrAlinmamisOlcutler.length || 0) > 0 ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-600'
               }`}>
-                {stressResults?.bosAsamalar.length || 0}
+                {stressResults?.odrAlinmamisOlcutler.length || 0}
               </span>
             </button>
 
             <button
-              onClick={() => setStressActiveTab('kanitsiz')}
+              onClick={() => setStressActiveTab('kanitfark')}
               className={`pb-3 px-4 text-xs font-bold transition-colors border-b-2 flex items-center gap-2 shrink-0 ${
-                stressActiveTab === 'kanitsiz'
+                stressActiveTab === 'kanitfark'
                   ? 'border-amber-600 text-amber-600'
                   : 'border-transparent text-slate-500 hover:text-slate-700'
               }`}
             >
-              <span>2. Metin Var, Kanıt Yok</span>
+              <span>2. Aşamalarda Kanıt Var, ÖDR'de Yok</span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                (stressResults?.metinVarKanitYok.length || 0) > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'
+                (stressResults?.asamadaVarOdrdeYok.length || 0) > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'
               }`}>
-                {stressResults?.metinVarKanitYok.length || 0}
-              </span>
-            </button>
-
-            <button
-              onClick={() => setStressActiveTab('atifsiz')}
-              className={`pb-3 px-4 text-xs font-bold transition-colors border-b-2 flex items-center gap-2 shrink-0 ${
-                stressActiveTab === 'atifsiz'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <span>3. Kanıt Var, Atıf Eksik</span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                (stressResults?.kanitVarAtifEksik.length || 0) > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
-              }`}>
-                {stressResults?.kanitVarAtifEksik.length || 0}
+                {stressResults?.asamadaVarOdrdeYok.length || 0}
               </span>
             </button>
           </div>
@@ -481,46 +472,48 @@ export default function IzlemePage() {
                 <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
                 <h4 className="text-base font-bold text-emerald-900">Mükemmel! Bütünlük Kusuru Bulunmadı</h4>
                 <p className="text-xs text-emerald-700 mt-1">
-                  Seçili dönemdeki tüm ölçütlerde metin-kanıt ve atıf eşleşmeleri eksiksiz durumdadır.
+                  Tüm ölçütler ÖDR raporuna dahil edilmiş ve PUKÖ kanıtları eksiksiz aktarılmıştır.
                 </p>
               </div>
-            ) : stressActiveTab === 'bos' ? (
-              (stressResults?.bosAsamalar.length || 0) === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-sm">Bu kategoride kusur tespit edilmedi.</div>
+            ) : stressActiveTab === 'odryok' ? (
+              (stressResults?.odrAlinmamisOlcutler.length || 0) === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-sm">Tüm ölçütler ÖDR raporuna alınmış durumdadır.</div>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {stressResults?.bosAsamalar.map((item, idx) => (
+                  {stressResults?.odrAlinmamisOlcutler.map((item, idx) => (
                     <div key={idx} className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50 px-3 rounded-xl transition-colors">
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className="px-2.5 py-1 rounded-md bg-red-50 text-red-700 font-mono font-bold text-xs shrink-0">
+                        <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 font-mono font-bold text-xs shrink-0">
                           {item.kod}
                         </span>
-                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-600 uppercase shrink-0">
-                          {item.puko_asamasi}
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-semibold shrink-0 ${
+                          item.puko_kanit_sayisi > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          {item.puko_kanit_sayisi > 0 ? `${item.puko_kanit_sayisi} Kanıt Mevcut` : 'Kanıt Yok'}
                         </span>
-                        <span className="text-xs font-medium text-slate-700 truncate">
+                        <span className="text-xs font-medium text-slate-700 truncate" title={item.olcut_adi}>
                           {item.olcut_adi}
                         </span>
                       </div>
                       <button
                         onClick={() => {
                           setIsStressModalOpen(false);
-                          router.push(`/olcutler/${item.alt_olcut_id}/${item.puko_asamasi}`);
+                          router.push('/raporlar');
                         }}
-                        className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 shrink-0"
+                        className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-lg hover:bg-indigo-50"
                       >
-                        Aşamaya Git <ChevronRight className="w-3.5 h-3.5" />
+                        ÖDR Oluştur <ChevronRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ))}
                 </div>
               )
-            ) : stressActiveTab === 'kanitsiz' ? (
-              (stressResults?.metinVarKanitYok.length || 0) === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-sm">Bu kategoride kusur tespit edilmedi.</div>
+            ) : (
+              (stressResults?.asamadaVarOdrdeYok.length || 0) === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-sm">Aşamalardaki tüm kanıtlar ÖDR raporunda mevcuttur.</div>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {stressResults?.metinVarKanitYok.map((item, idx) => (
+                  {stressResults?.asamadaVarOdrdeYok.map((item, idx) => (
                     <div key={idx} className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50 px-3 rounded-xl transition-colors">
                       <div className="flex items-center gap-3 min-w-0">
                         <span className="px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 font-mono font-bold text-xs shrink-0">
@@ -529,40 +522,9 @@ export default function IzlemePage() {
                         <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-600 uppercase shrink-0">
                           {item.puko_asamasi}
                         </span>
-                        <span className="text-xs font-medium text-slate-700 truncate">
-                          {item.olcut_adi}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setIsStressModalOpen(false);
-                          router.push(`/olcutler/${item.alt_olcut_id}/${item.puko_asamasi}`);
-                        }}
-                        className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 shrink-0"
-                      >
-                        Kanıt Ekle <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )
-            ) : (
-              (stressResults?.kanitVarAtifEksik.length || 0) === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-sm">Bu kategoride kusur tespit edilmedi.</div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {stressResults?.kanitVarAtifEksik.map((item, idx) => (
-                    <div key={idx} className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50 px-3 rounded-xl transition-colors">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 font-mono font-bold text-xs shrink-0">
-                          {item.kod}
-                        </span>
-                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-600 uppercase shrink-0">
-                          {item.puko_asamasi}
-                        </span>
                         <div className="min-w-0">
-                          <p className="text-xs font-semibold text-slate-800 truncate">
-                            [Kanıt {item.kanit_no}] {item.dosya_adi}
+                          <p className="text-xs font-semibold text-slate-800 truncate" title={item.kanit_adi}>
+                            Eksik Kanıt: {item.kanit_adi}
                           </p>
                           <p className="text-[11px] text-slate-400 truncate">
                             {item.olcut_adi}
@@ -572,11 +534,11 @@ export default function IzlemePage() {
                       <button
                         onClick={() => {
                           setIsStressModalOpen(false);
-                          router.push(`/olcutler/${item.alt_olcut_id}/${item.puko_asamasi}`);
+                          router.push('/raporlar');
                         }}
-                        className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 shrink-0"
+                        className="text-xs font-bold text-amber-600 hover:text-amber-800 flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-lg hover:bg-amber-50"
                       >
-                        Atıf Yap <ChevronRight className="w-3.5 h-3.5" />
+                        ÖDR'ye Ekle <ChevronRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ))}

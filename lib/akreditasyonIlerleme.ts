@@ -2,10 +2,9 @@
  * Akreditasyon Hazırlık Kokpiti İlerleme ve Tamamlanma Hesaplama Modülü
  *
  * Kural:
- * Bir alt ölçüt, seçili dönemde 5 PUKÖ aşamasının her biri için kaydı varsa
- * ('planlama', 'uygulama', 'kontrol', 'onlem', 'olgunluk')
- * VE her bir kaydın durum alanı 'Onaylandı' ise tamamlanmış kabul edilir.
- * ÖDR metni bu hesaba dahil DEĞİLDİR; sadece PUKÖ onaylarına dayanır.
+ * Bir alt ölçüt şu iki şarttan biri sağlandığında TAMAMLANMIŞ kabul edilir:
+ * 1. Seçili dönemde Özdeğerlendirme Raporu (ÖDR) onaylanmışsa (onay_durumu = 'onaylandi'), VEYA
+ * 2. Seçili dönemde 5 PUKÖ aşamasının her biri ('planlama', 'uygulama', 'kontrol', 'onlem', 'olgunluk') 'Onaylandı' durumundaysa.
  */
 
 export const ZORUNLU_PUKO_ASAMALARI = ['planlama', 'uygulama', 'kontrol', 'onlem', 'olgunluk'] as const;
@@ -21,6 +20,12 @@ export interface PukoDurumKayit {
   alt_olcut_id: number | string;
   puko_asamasi: string;
   durum?: string | null;
+  donem_id?: string | null;
+}
+
+export interface OdrDurumKayit {
+  alt_olcut_id: number | string;
+  onay_durumu?: string | null;
   donem_id?: string | null;
 }
 
@@ -50,15 +55,16 @@ const BASLIK_ADLARI: Record<string, string> = {
 };
 
 /**
- * Verilen PUKÖ kayıtları ve kapsamdaki alt ölçütlere göre tamamlanma oranlarını hesaplar.
+ * Verilen PUKÖ ve ÖDR kayıtları ile kapsamdaki alt ölçütlere göre tamamlanma oranlarını hesaplar.
  */
 export function hesaplaAkreditasyonIlerleme(params: {
   kapsamdakiOlcutler: AltOlcutBasit[];
-  pukoKayitlari: PukoDurumKayit[];
+  pukoKayitlari?: PukoDurumKayit[];
+  odrKayitlari?: OdrDurumKayit[];
   kapsamTuru: 'kurumsal' | 'koordinator' | 'birim' | 'beklemede';
   ekBilgi?: string;
 }): IlerlemeSonucu {
-  const { kapsamdakiOlcutler, pukoKayitlari, kapsamTuru, ekBilgi } = params;
+  const { kapsamdakiOlcutler, pukoKayitlari = [], odrKayitlari = [], kapsamTuru, ekBilgi } = params;
 
   if (!kapsamdakiOlcutler || kapsamdakiOlcutler.length === 0) {
     return {
@@ -71,35 +77,49 @@ export function hesaplaAkreditasyonIlerleme(params: {
     };
   }
 
-  // 1. Ölçüt bazında onaylı aşamaları topla
-  // Map: alt_olcut_id -> Set<puko_asamasi> (Sadece durum === 'Onaylandı' olanlar)
-  const onayliAsamalarMap = new Map<string, Set<string>>();
+  // 1. ÖDR Onaylı Ölçütleri Topla
+  const onayliOdrSet = new Set<string>();
+  odrKayitlari.forEach(odr => {
+    const rawDurum = (odr.onay_durumu || '').trim().toLowerCase();
+    if (rawDurum === 'onaylandi' || rawDurum === 'onaylandı') {
+      onayliOdrSet.add(String(odr.alt_olcut_id));
+    }
+  });
 
+  // 2. Ölçüt bazında onaylı PUKÖ aşamalarını topla
+  const onayliPukoAsamalarMap = new Map<string, Set<string>>();
   pukoKayitlari.forEach(p => {
     const rawDurum = (p.durum || '').trim();
-    // 'Onaylandı' durum kontrolü (büyük/küçük harf veya Türkçe karakter toleranslı)
     const isOnaylandi = rawDurum.toLocaleLowerCase('tr') === 'onaylandı' || rawDurum.toLowerCase() === 'onaylandi';
 
     if (isOnaylandi && p.puko_asamasi) {
       const key = String(p.alt_olcut_id);
-      if (!onayliAsamalarMap.has(key)) {
-        onayliAsamalarMap.set(key, new Set());
+      if (!onayliPukoAsamalarMap.has(key)) {
+        onayliPukoAsamalarMap.set(key, new Set());
       }
-      onayliAsamalarMap.get(key)!.add(p.puko_asamasi.trim().toLowerCase());
+      onayliPukoAsamalarMap.get(key)!.add(p.puko_asamasi.trim().toLowerCase());
     }
   });
 
-  // 2. Kapsamdaki alt ölçütlerin tamamlanıp tamamlanmadığını denetle
+  // 3. Kapsamdaki alt ölçütlerin tamamlanıp tamamlanmadığını denetle
   const tamamlananSet = new Set<number | string>();
 
   kapsamdakiOlcutler.forEach(olcut => {
-    const onayliAsamalar = onayliAsamalarMap.get(String(olcut.id));
-    if (!onayliAsamalar) return;
+    const key = String(olcut.id);
 
-    // 5 aşamanın ('planlama', 'uygulama', 'kontrol', 'onlem', 'olgunluk') tamamı onaylı mı?
-    const hepsiOnayli = ZORUNLU_PUKO_ASAMALARI.every(asama => onayliAsamalar.has(asama));
-    if (hepsiOnayli) {
+    // Kriter A: ÖDR Onaylandı mı?
+    if (onayliOdrSet.has(key)) {
       tamamlananSet.add(olcut.id);
+      return;
+    }
+
+    // Kriter B: 5 PUKÖ aşamasının hepsi onaylı mı?
+    const onayliAsamalar = onayliPukoAsamalarMap.get(key);
+    if (onayliAsamalar) {
+      const hepsiOnayli = ZORUNLU_PUKO_ASAMALARI.every(asama => onayliAsamalar.has(asama));
+      if (hepsiOnayli) {
+        tamamlananSet.add(olcut.id);
+      }
     }
   });
 
@@ -107,7 +127,7 @@ export function hesaplaAkreditasyonIlerleme(params: {
   const tamamlananOlcut = tamamlananSet.size;
   const genelYuzde = toplamOlcut > 0 ? parseFloat(((tamamlananOlcut / toplamOlcut) * 100).toFixed(1)) : 0;
 
-  // 3. A-E Başlık Dağılımını Hesapla
+  // 4. A-E Başlık Dağılımını Hesapla
   const baslikMap: Record<string, { toplam: number; tamamlanan: number }> = {
     A: { toplam: 0, tamamlanan: 0 },
     B: { toplam: 0, tamamlanan: 0 },
@@ -140,14 +160,21 @@ export function hesaplaAkreditasyonIlerleme(params: {
       };
     });
 
-  // 4. Kapsam Etiketi
-  let kapsamEtiketi = 'Kurumsal Kapsam (Tüm Ölçütler)';
-  if (kapsamTuru === 'koordinator') {
-    kapsamEtiketi = ekBilgi ? `Atanan Başlık Kapsamı: ${ekBilgi}` : 'Atanan Başlık Kapsamı';
-  } else if (kapsamTuru === 'birim') {
-    kapsamEtiketi = `Atanan Ölçütleriniz (${toplamOlcut} Ölçüt)`;
-  } else if (kapsamTuru === 'beklemede') {
-    kapsamEtiketi = 'Atama Yapılmamış (Beklemede)';
+  let kapsamEtiketi = '';
+  switch (kapsamTuru) {
+    case 'kurumsal':
+      kapsamEtiketi = 'Kurum Geneli (Tüm Ölçütler)';
+      break;
+    case 'koordinator':
+      kapsamEtiketi = `Başlık Koordinatörlüğü (${ekBilgi || 'Atanan Başlık'})`;
+      break;
+    case 'birim':
+      kapsamEtiketi = `Birim Kapsamı (${toplamOlcut} Ölçüt)`;
+      break;
+    case 'beklemede':
+    default:
+      kapsamEtiketi = 'Atama Bekleniyor';
+      break;
   }
 
   return {

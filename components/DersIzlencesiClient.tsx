@@ -132,7 +132,7 @@ export default function DersIzlencesiClient({
   const [arsivSaving, setArsivSaving] = useState(false);
   const [uploadingField, setUploadingField] = useState<string | null>(null);
 
-  // Arşiv Verilerini Çek (Birden fazla hoca desteği - maybeSingle hatası önlendi)
+  // Arşiv Verilerini Çek (Birden fazla hoca desteği - foreign key ayrık sorgulama ile güvenli)
   useEffect(() => {
     async function fetchArsiv() {
       if (!selectedCourse?.kod) return;
@@ -140,7 +140,7 @@ export default function DersIzlencesiClient({
       try {
         let query = supabase
           .from('ders_sinav_arsivi')
-          .select('*, profiller:hoca_id(id, tam_adi, email)')
+          .select('*')
           .eq('ders_id', selectedCourse.kod);
 
         if (selectedPeriod?.id) {
@@ -158,12 +158,33 @@ export default function DersIzlencesiClient({
         }
 
         const allRows = Array.isArray(rows) ? rows : [];
-        setArsivListesi(allRows);
 
-        let activeRecord = allRows.find(r => r.hoca_id === selectedHocaId);
-        if (!activeRecord && allRows.length > 0) {
-          const ownRecord = allRows.find(r => r.hoca_id === currentUserId);
-          activeRecord = ownRecord || allRows[0];
+        // Hoca profillerini yükle
+        const hocaIds = Array.from(new Set(allRows.map((r: any) => r.hoca_id).filter(Boolean)));
+        let enrichedRows = allRows;
+        if (hocaIds.length > 0) {
+          const { data: profiller } = await supabase
+            .from('profiller')
+            .select('id, ad_soyad, email')
+            .in('id', hocaIds);
+          
+          const profMap = new Map((profiller || []).map((p: any) => [p.id, p]));
+          enrichedRows = allRows.map((r: any) => ({
+            ...r,
+            profiller: profMap.get(r.hoca_id) ? {
+              id: r.hoca_id,
+              tam_adi: profMap.get(r.hoca_id)?.ad_soyad || profMap.get(r.hoca_id)?.email || 'Öğretim Elemanı',
+              email: profMap.get(r.hoca_id)?.email || '',
+            } : null,
+          }));
+        }
+
+        setArsivListesi(enrichedRows);
+
+        let activeRecord = enrichedRows.find((r: any) => r.hoca_id === selectedHocaId);
+        if (!activeRecord && enrichedRows.length > 0) {
+          const ownRecord = enrichedRows.find((r: any) => r.hoca_id === currentUserId);
+          activeRecord = ownRecord || enrichedRows[0];
           setSelectedHocaId(activeRecord.hoca_id);
         }
 
@@ -244,6 +265,15 @@ export default function DersIzlencesiClient({
       }
       if (data?.id) {
         setSinavArsivi(prev => ({ ...prev, id: data.id }));
+        setArsivListesi(prev => {
+          const idx = prev.findIndex((r: any) => r.hoca_id === currentUserId);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = { ...next[idx], ...data };
+            return next;
+          }
+          return [...prev, data];
+        });
       }
     } catch (err: any) {
       console.error('Arşiv kayıt hatası:', err);

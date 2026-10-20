@@ -101,14 +101,21 @@ export default function OlcutlerPage() {
         }
 
         if (calculatedKapsamTuru !== 'beklemede' && finalOlcutler.length > 0) {
-          const { data: pukoList } = await supabase
-            .from('puko_degerlendirmeleri')
-            .select('alt_olcut_id, puko_asamasi, durum, donem_id')
-            .eq('donem_id', selectedPeriod.id);
+          const [pukoRes, odrRes] = await Promise.all([
+            supabase
+              .from('puko_degerlendirmeleri')
+              .select('alt_olcut_id, puko_asamasi, durum, donem_id')
+              .eq('donem_id', selectedPeriod.id),
+            supabase
+              .from('ozdegerlendirme_raporlari')
+              .select('alt_olcut_id, onay_durumu, donem_id')
+              .eq('donem_id', selectedPeriod.id),
+          ]);
 
           const sonuc = hesaplaAkreditasyonIlerleme({
             kapsamdakiOlcutler: finalOlcutler,
-            pukoKayitlari: pukoList || [],
+            pukoKayitlari: pukoRes.data || [],
+            odrKayitlari: odrRes.data || [],
             kapsamTuru: calculatedKapsamTuru,
             ekBilgi: calculatedEkBilgi,
           });

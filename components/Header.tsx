@@ -1,4 +1,3 @@
-
 import { createClient } from '@/lib/supabase/server';
 import { getTranslations } from 'next-intl/server';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -6,6 +5,7 @@ import NotificationBellClient from './NotificationBellClient';
 import PeriodSelectorClient from './PeriodSelectorClient';
 import UserProfileWrapper from './UserProfileWrapper';
 import ThemeToggleClient from './ThemeToggleClient';
+import PresentationToggleClient from './PresentationToggleClient';
 
 export default async function Header() {
   const supabase = await createClient();
@@ -59,7 +59,11 @@ export default async function Header() {
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-end px-8 z-10 sticky top-0">
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-4">
+        {/* Sunum Modu Butonu */}
+        <PresentationToggleClient />
+        <div className="h-4 w-px bg-slate-200"></div>
+
         <PeriodSelectorClient />
         <div className="h-4 w-px bg-slate-200"></div>
         <ThemeToggleClient />
@@ -68,7 +72,6 @@ export default async function Header() {
         <div className="h-4 w-px bg-slate-200"></div>
         {user && <NotificationBellClient userId={user.id} isAdmin={isAdmin} />}
 
-        
         <div className="h-6 w-px bg-slate-200"></div>
         
         {user && (
