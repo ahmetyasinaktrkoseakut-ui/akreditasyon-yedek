@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { 
   Save, ArrowLeft, Plus, Trash2, 
   BookOpen, Clock, Target, ListChecks, 
@@ -114,6 +115,12 @@ export default function DersIzlencesiClient({
 }) {
   const tArsiv = useTranslations('ExamArchive');
   const { selectedPeriod } = usePeriod();
+  const router = useRouter();
+  const [izlenceList, setIzlenceList] = useState<any[]>(izlenceler || []);
+
+  useEffect(() => {
+    setIzlenceList(izlenceler || []);
+  }, [izlenceler]);
   const [activeStep, setActiveStep] = useState(1);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [formData, setFormData] = useState<any>(null);
@@ -418,7 +425,10 @@ export default function DersIzlencesiClient({
 
   const handleCourseSelect = (course: Course) => {
     setSelectedCourse(course);
-    const existing = izlenceler.find(i => i.ders_id === course.kod);
+    // Öncelik 1: Mevcut hocanın kendi kaydı | Öncelik 2: Doldurulmuş herhangi bir kayıt | Öncelik 3: İlk kayıt
+    const existing = izlenceList.find(i => i.ders_id === course.kod && i.hoca_id === currentUserId)
+      || izlenceList.find(i => i.ders_id === course.kod && i.icerik && (i.icerik.amac || i.icerik.ogretimElemani))
+      || izlenceList.find(i => i.ders_id === course.kod);
     
     const defaultData = {
       ogretimElemani: defaultOgretimElemani,
@@ -501,16 +511,25 @@ export default function DersIzlencesiClient({
     if (!selectedCourse) return;
     setLoading(true);
     try {
+      const saveEntry = {
+        ders_id: selectedCourse.kod,
+        hoca_id: currentUserId,
+        icerik: formData,
+        guncelleme_tarihi: new Date().toISOString()
+      };
+
       const { error } = await supabase
         .from('ders_izlenceleri')
-        .upsert({
-          ders_id: selectedCourse.kod,
-          hoca_id: currentUserId,
-          icerik: formData,
-          guncelleme_tarihi: new Date().toISOString()
-        }, { onConflict: 'ders_id, hoca_id' });
+        .upsert(saveEntry, { onConflict: 'ders_id, hoca_id' });
 
       if (error) throw error;
+
+      setIzlenceList(prev => {
+        const filtered = prev.filter(i => !(i.ders_id === selectedCourse.kod && i.hoca_id === currentUserId));
+        return [saveEntry, ...filtered];
+      });
+
+      router.refresh();
       toast.success('İzlence başarıyla kaydedildi!');
     } catch (err) {
       console.error(err);
@@ -563,9 +582,21 @@ export default function DersIzlencesiClient({
           ))}
         </div>
 
-        <button onClick={handleSave} disabled={loading} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-6 py-3 rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50">
-          <Save className="w-4 h-4" /> {loading ? 'KAYDEDİLİYOR...' : 'KAYDET'}
-        </button>
+        <div className="flex items-center gap-3">
+          <a 
+            href={`/izlenceler/${selectedCourse.kod}`} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-3 rounded-xl border border-slate-300 transition-all active:scale-95 shadow-sm"
+            title="Öğrencinin gördüğü halka açık izlence sayfasını yeni sekmede aç"
+          >
+            <Eye className="w-4 h-4 text-blue-600" />
+            <span className="hidden sm:inline">ÖĞRENCİ GÖRÜNÜMÜ</span>
+          </a>
+          <button onClick={handleSave} disabled={loading} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-6 py-3 rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50">
+            <Save className="w-4 h-4" /> {loading ? 'KAYDEDİLİYOR...' : 'KAYDET'}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 max-w-6xl mx-auto w-full px-4 py-10">

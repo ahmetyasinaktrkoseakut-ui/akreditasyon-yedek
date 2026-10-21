@@ -45,7 +45,8 @@ export default async function IzlenceTakipPage() {
 
   const { data: izlenceler } = await supabase
     .from('ders_izlenceleri')
-    .select('ders_id, hoca_id, guncelleme_tarihi, icerik');
+    .select('ders_id, hoca_id, guncelleme_tarihi, icerik')
+    .order('guncelleme_tarihi', { ascending: false });
 
   const { data: profiller } = await supabase
     .from('profiller')
@@ -54,7 +55,7 @@ export default async function IzlenceTakipPage() {
   // İzlence tam dolu mu kontrol et (5 ana bölüm)
   const isTrulyFilled = (icerik: any) => {
     if (!icerik) return false;
-    const hasGenel = icerik.amac && icerik.amac.length > 5;
+    const hasGenel = Boolean((icerik.amac && String(icerik.amac).trim().length > 0) || (icerik.ogretimElemani && String(icerik.ogretimElemani).trim().length > 0));
     const hasOC = Array.isArray(icerik.ogrenimCiktilari) && icerik.ogrenimCiktilari.some((oc: any) => oc.cikti);
     const hasHaftalik = Array.isArray(icerik.haftalikIcerik) && icerik.haftalikIcerik.length > 5;
     const hasDegerlendirme = Array.isArray(icerik.degerlendirme) && icerik.degerlendirme.some((d: any) => d.yuzde > 0);

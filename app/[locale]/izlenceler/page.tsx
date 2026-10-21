@@ -36,7 +36,8 @@ export default async function IzlencelerPage() {
 
   const { data: izlenceler } = await supabase
     .from('ders_izlenceleri')
-    .select('ders_id, icerik');
+    .select('ders_id, icerik, guncelleme_tarihi')
+    .order('guncelleme_tarihi', { ascending: false });
 
   const baseDersler = (dersler || []).map(d => {
     // 1. Yarıyıl ismini güncelle

@@ -13,13 +13,20 @@ export default async function IzlenceDetailPage({ params }: { params: Promise<{ 
   const { data: ders } = await supabase.from('dersler').select('*').eq('kod', kod).maybeSingle();
   if (!ders) notFound();
 
-  const { data: izlence } = await supabase
+  const { data: izlenceList } = await supabase
     .from('ders_izlenceleri')
     .select('*')
     .eq('ders_id', kod)
-    .order('guncelleme_tarihi', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order('guncelleme_tarihi', { ascending: false });
+
+  // İçi dolu olan izlenceyi önceliklendir (öğretim elemanı, amaç veya öğrenim çıktısı girilmiş olan)
+  const izlence = (izlenceList || []).find((i: any) => 
+    i.icerik && (
+      (i.icerik.amac && String(i.icerik.amac).trim().length > 0) ||
+      (i.icerik.ogretimElemani && String(i.icerik.ogretimElemani).trim().length > 0) ||
+      (Array.isArray(i.icerik.ogrenimCiktilari) && i.icerik.ogrenimCiktilari.some((oc: any) => oc && oc.cikti && String(oc.cikti).trim().length > 0))
+    )
+  ) || izlenceList?.[0];
 
   if (!izlence || !izlence.icerik) {
     return (

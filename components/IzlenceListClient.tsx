@@ -33,14 +33,11 @@ export default function IzlenceListClient({ initialDersler, izlenceler, user, ka
 
   const isTrulyFilled = (icerik: any) => {
     if (!icerik) return false;
-    const hasGenel = icerik.amac && icerik.amac.length > 5;
-    const hasOC = Array.isArray(icerik.ogrenimCiktilari) && icerik.ogrenimCiktilari.some((oc: any) => oc.cikti);
-    const hasHaftalik = Array.isArray(icerik.haftalikIcerik) && icerik.haftalikIcerik.length > 5;
-    const hasDegerlendirme = Array.isArray(icerik.degerlendirme) && icerik.degerlendirme.some((d: any) => d.yuzde > 0);
-    const hasAKTS = Array.isArray(icerik.aktsIsYuku) && icerik.aktsIsYuku.length > 0;
-    const hasMatris = Array.isArray(icerik.pcMatris) && icerik.pcMatris.length > 0;
-    
-    return hasGenel && hasOC && hasHaftalik && hasDegerlendirme && hasAKTS && hasMatris;
+    return Boolean(
+      (icerik.amac && String(icerik.amac).trim().length > 0) ||
+      (icerik.ogretimElemani && String(icerik.ogretimElemani).trim().length > 0) ||
+      (Array.isArray(icerik.ogrenimCiktilari) && icerik.ogrenimCiktilari.some((oc: any) => oc && oc.cikti && String(oc.cikti).trim().length > 0))
+    );
   };
 
   return (
@@ -106,7 +103,8 @@ export default function IzlenceListClient({ initialDersler, izlenceler, user, ka
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {katDersleri.map((ders, idx) => {
-                      const izlence = (izlenceler || []).find(i => i.ders_id === ders.kod);
+                      const izlence = (izlenceler || []).find(i => i.ders_id === ders.kod && isTrulyFilled(i.icerik))
+                        || (izlenceler || []).find(i => i.ders_id === ders.kod);
                       const isFilled = isTrulyFilled(izlence?.icerik);
                       
                       const isPlaceholder = ders.ad.toLowerCase().includes('seçmeli');
@@ -118,30 +116,25 @@ export default function IzlenceListClient({ initialDersler, izlenceler, user, ka
                           <td className="p-4 text-center font-mono font-bold text-slate-400 group-hover:text-blue-600 transition-colors">{ders.kod}</td>
                           <td className="p-4 text-center font-black text-blue-900 border-x border-slate-50">{ders.tur}</td>
                           <td className="p-4 font-bold">
-                            {canEdit ? (
-                              <Link href={`/ders-izlenceleri?kod=${ders.kod}`} className="text-blue-700 hover:text-blue-900 flex items-center justify-between group/link">
-                                <span className="group-hover/link:underline">{ders.ad}</span>
-                                <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-600 rounded-full text-[10px] font-black opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
-                                  DÜZENLE <Edit3 className="w-3 h-3" />
-                                </div>
-                              </Link>
-                            ) : canView ? (
-                              <Link href={`/izlenceler/${ders.kod}`} className="text-blue-700 hover:text-blue-900 flex items-center justify-between group/link">
-                                <span className="group-hover/link:underline">{ders.ad}</span>
-                                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
-                                  GÖRÜNTÜLE <Eye className="w-3 h-3" />
-                                </div>
-                              </Link>
-                            ) : (
-                              <div className="text-slate-400 flex items-center justify-between">
-                                <span>{ders.ad}</span>
-                                {!isPlaceholder && (
+                            <div className="flex items-center justify-between gap-4">
+                              <span className="text-slate-800">{ders.ad}</span>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {canEdit && (
+                                  <Link href={`/ders-izlenceleri?kod=${ders.kod}`} className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-full text-[10px] font-black transition-all border border-amber-200 shadow-sm">
+                                    DÜZENLE <Edit3 className="w-3 h-3" />
+                                  </Link>
+                                )}
+                                {canView ? (
+                                  <Link href={`/izlenceler/${ders.kod}`} className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black transition-all border border-emerald-200 shadow-sm">
+                                    GÖRÜNTÜLE <Eye className="w-3 h-3" />
+                                  </Link>
+                                ) : !canEdit && !isPlaceholder ? (
                                   <div className="flex items-center gap-1 text-[9px] font-bold text-slate-300">
                                     <Lock className="w-3 h-3" /> HENÜZ DOLMADI
                                   </div>
-                                )}
+                                ) : null}
                               </div>
-                            )}
+                            </div>
                           </td>
                           <td className="p-4 text-center font-bold border-x border-slate-50">{ders.t}</td>
                           <td className="p-4 text-center font-bold border-r border-slate-50">{ders.u}</td>
@@ -158,7 +151,8 @@ export default function IzlenceListClient({ initialDersler, izlenceler, user, ka
                 {/* Mobil Görünüm (Kartlar) */}
                 <div className="grid grid-cols-1 gap-4 p-4 md:hidden bg-slate-50">
                   {katDersleri.map((ders, idx) => {
-                    const izlence = (izlenceler || []).find(i => i.ders_id === ders.kod);
+                    const izlence = (izlenceler || []).find(i => i.ders_id === ders.kod && isTrulyFilled(i.icerik))
+                      || (izlenceler || []).find(i => i.ders_id === ders.kod);
                     const isFilled = isTrulyFilled(izlence?.icerik);
                     
                     const isPlaceholder = ders.ad.toLowerCase().includes('seçmeli');
@@ -186,20 +180,21 @@ export default function IzlenceListClient({ initialDersler, izlenceler, user, ka
                             <span className="bg-slate-100 px-2 py-1 rounded">U: {ders.u}</span>
                             <span className="bg-slate-100 px-2 py-1 rounded">L: {ders.l}</span>
                           </div>
-                          <div>
-                            {canEdit ? (
-                              <Link href={`/ders-izlenceleri?kod=${ders.kod}`} className="text-[10px] font-black bg-amber-50 text-amber-600 px-3 py-2 rounded-lg flex items-center gap-1 border border-amber-100">
+                          <div className="flex items-center gap-2">
+                            {canEdit && (
+                              <Link href={`/ders-izlenceleri?kod=${ders.kod}`} className="text-[10px] font-black bg-amber-50 hover:bg-amber-100 text-amber-700 px-3 py-2 rounded-lg flex items-center gap-1 border border-amber-200">
                                 DÜZENLE <Edit3 className="w-3 h-3" />
                               </Link>
-                            ) : canView ? (
-                              <Link href={`/izlenceler/${ders.kod}`} className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-3 py-2 rounded-lg flex items-center gap-1 border border-emerald-100">
+                            )}
+                            {canView ? (
+                              <Link href={`/izlenceler/${ders.kod}`} className="text-[10px] font-black bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-2 rounded-lg flex items-center gap-1 border border-emerald-200">
                                 GÖRÜNTÜLE <Eye className="w-3 h-3" />
                               </Link>
-                            ) : (
+                            ) : !canEdit && !isPlaceholder ? (
                               <div className="text-[10px] font-bold text-slate-400 flex items-center gap-1 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
                                 <Lock className="w-3 h-3" /> HENÜZ DOLMADI
                               </div>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                       </div>

@@ -47,7 +47,8 @@ export default async function DersIzlenceleriPage({ searchParams }: { searchPara
   // personel ise sadece kendisininkini görsün.
   let izlenceQuery = supabase
     .from('ders_izlenceleri')
-    .select('id, ders_id, guncelleme_tarihi, icerik, hoca_id');
+    .select('id, ders_id, guncelleme_tarihi, icerik, hoca_id')
+    .order('guncelleme_tarihi', { ascending: false });
   
   if (!isYonetici) {
     izlenceQuery = izlenceQuery.eq('hoca_id', user.id);
