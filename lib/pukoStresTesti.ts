@@ -82,6 +82,20 @@ export function isHtmlContentEmpty(html: string | null | undefined): boolean {
 }
 
 /**
+ * Dosya adındaki işaretleme eki (_isaretli, _annotated), zaman damgası ve uzantıyı temizleyerek temel doküman kimliğini çıkarır.
+ */
+export function normalizeDocKey(str: string | null | undefined): string {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .replace(/_isaretli|_annotated/g, '')
+    .replace(/[0-9]{10,}_/g, '')
+    .replace(/\.[^/.]+$/, '')
+    .replace(/[^a-z0-9ğüşıöç]/g, '')
+    .trim();
+}
+
+/**
  * Ölçüt bazlı PUKÖ - ÖDR Stres Testini çalıştırır.
  */
 export function calistirPukoStresTesti(params: {
@@ -148,15 +162,23 @@ export function calistirPukoStresTesti(params: {
           if (!rawUrl && !cleanName) return;
 
           // ÖDR kanıt listesinde veya içeriğinde var mı?
+          const normCleanName = normalizeDocKey(cleanName);
           const inOdrList = odrKanitlar.some((ok: any) => {
             const okUrl = (ok.url || ok.dosya_url || ok.storagePath || '').trim();
             const okName = (ok.name || ok.dosya_adi || '').trim();
             if (rawUrl && okUrl && (okUrl === rawUrl || okUrl.includes(rawUrl) || rawUrl.includes(okUrl))) return true;
             if (cleanName && okName && okName.toLowerCase() === cleanName.toLowerCase()) return true;
+            if (normCleanName && normalizeDocKey(okName) === normCleanName) return true;
             return false;
           });
 
-          const inOdrHtml = rawUrl ? odrIcerik.includes(rawUrl) : false;
+          // ÖDR HTML içeriğinde doğrudan URL, dosya adı veya kanıt etiketi/evidence_id var mı?
+          const inOdrHtml = Boolean(
+            (rawUrl && odrIcerik.includes(rawUrl)) ||
+            (cleanName && odrIcerik.includes(cleanName)) ||
+            (normCleanName && normalizeDocKey(odrIcerik).includes(normCleanName)) ||
+            (k.evidence_id && odrIcerik.includes(k.evidence_id))
+          );
 
           if (!inOdrList && !inOdrHtml) {
             asamadaVarOdrdeYok.push({
