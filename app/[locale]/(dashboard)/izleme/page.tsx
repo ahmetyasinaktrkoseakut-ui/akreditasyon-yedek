@@ -10,6 +10,7 @@ import { useTranslations } from 'next-intl';
 import { usePeriod } from '@/contexts/PeriodContext';
 import { calistirPukoStresTesti, StresTestiSonucu } from '@/lib/pukoStresTesti';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { toast } from 'react-hot-toast';
 
 export default function IzlemePage() {
   const t = useTranslations('Tracking');
@@ -33,7 +34,22 @@ export default function IzlemePage() {
   const [isStressModalOpen, setIsStressModalOpen] = useState(false);
   const [isTestingStress, setIsTestingStress] = useState(false);
   const [stressResults, setStressResults] = useState<StresTestiSonucu | null>(null);
-  const [stressActiveTab, setStressActiveTab] = useState<'odryok' | 'kanitfark'>('odryok');
+  const [stressActiveTab, setStressActiveTab] = useState<'odryok' | 'kanitfark' | 'bosasama' | 'ingilizceodr'>('odryok');
+
+  const getAsamaRoute = (altOlcutId: number | string, asama: string) => {
+    switch (asama) {
+      case 'planlama':
+        return `/olcutler/${altOlcutId}/planlama`;
+      case 'uygulama':
+        return `/olcutler/${altOlcutId}/uygulama`;
+      case 'kontrol':
+        return `/olcutler/${altOlcutId}/kontrol-etme`;
+      case 'onlem':
+        return `/olcutler/${altOlcutId}/iyilestirme`;
+      default:
+        return `/olcutler/${altOlcutId}`;
+    }
+  };
 
   useEffect(() => {
     async function fetchStats() {
@@ -192,7 +208,7 @@ export default function IzlemePage() {
     if (!selectedPeriod) return;
     setIsTestingStress(true);
     try {
-      const [{ data: pukoList }, { data: altList }, { data: odrList }] = await Promise.all([
+      const [pukoRes, altRes, odrRes] = await Promise.all([
         supabase
           .from('puko_degerlendirmeleri')
           .select('alt_olcut_id, durum, puko_asamasi, kanit_dosyalari, aciklama, donem_id')
@@ -203,22 +219,35 @@ export default function IzlemePage() {
           .order('kod'),
         supabase
           .from('ozdegerlendirme_raporlari')
-          .select('alt_olcut_id, icerik, kanitlar, onay_durumu, donem_id')
+          .select('alt_olcut_id, icerik, icerik_en, kanitlar, onay_durumu, donem_id')
           .eq('donem_id', selectedPeriod.id),
       ]);
 
+      if (pukoRes.error || altRes.error || odrRes.error) {
+        const errorMsg = pukoRes.error?.message || altRes.error?.message || odrRes.error?.message || 'Veritabanı sorgu hatası';
+        console.error('Stres testi sorgu hatası:', { pukoErr: pukoRes.error, altErr: altRes.error, odrErr: odrRes.error });
+        toast.error(`Stres testi çalıştırılamadı: ${errorMsg}`);
+        return;
+      }
+
       const result = calistirPukoStresTesti({
-        altOlcutler: altList || [],
-        pukoListesi: pukoList || [],
-        odrListesi: odrList || [],
+        altOlcutler: altRes.data || [],
+        pukoListesi: pukoRes.data || [],
+        odrListesi: odrRes.data || [],
       });
       setStressResults(result);
-      if (result.odrAlinmamisOlcutler.length > 0) setStressActiveTab('odryok');
-      else setStressActiveTab('kanitfark');
+      if (result.odrAlinmamisOlcutler.length > 0) {
+        setStressActiveTab('odryok');
+      } else if (result.asamadaVarOdrdeYok.length > 0) {
+        setStressActiveTab('kanitfark');
+      } else {
+        setStressActiveTab('bosasama');
+      }
 
       setIsStressModalOpen(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Stres testi hatası:', err);
+      toast.error(err?.message || 'Stres testi çalıştırılırken bir hata oluştu');
     } finally {
       setIsTestingStress(false);
     }
@@ -430,7 +459,7 @@ export default function IzlemePage() {
             </button>
           </DialogHeader>
 
-          {/* Sekmeler: Ölçüt Bazlı 2 Temel Kategori */}
+          {/* Sekmeler: Ölçüt Bazlı 3 Temel Kategori */}
           <div className="flex border-b border-slate-200 bg-slate-50 px-6 pt-3 gap-2 shrink-0 overflow-x-auto">
             <button
               onClick={() => setStressActiveTab('odryok')}
@@ -463,6 +492,37 @@ export default function IzlemePage() {
                 {stressResults?.asamadaVarOdrdeYok.length || 0}
               </span>
             </button>
+
+            <button
+              onClick={() => setStressActiveTab('bosasama')}
+              className={`pb-3 px-4 text-xs font-bold transition-colors border-b-2 flex items-center gap-2 shrink-0 ${
+                stressActiveTab === 'bosasama'
+                  ? 'border-rose-600 text-rose-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <span>3. Boş Aşamalar</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                (stressResults?.bosAsamalar?.length || 0) > 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-200 text-slate-600'
+              }`}>
+                {stressResults?.bosAsamalar?.length || 0}
+              </span>
+            </button>
+            <button
+              onClick={() => setStressActiveTab('ingilizceodr')}
+              className={`pb-3 px-4 text-xs font-bold transition-colors border-b-2 flex items-center gap-2 shrink-0 ${
+                stressActiveTab === 'ingilizceodr'
+                  ? 'border-purple-600 text-purple-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <span>4. İngilizce ÖDR Kusurları</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                (stressResults?.ingilizceOdrSorunlari?.length || 0) > 0 ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-600'
+              }`}>
+                {stressResults?.ingilizceOdrSorunlari?.length || 0}
+              </span>
+            </button>
           </div>
 
           {/* Sekme İçerikleri */}
@@ -472,7 +532,7 @@ export default function IzlemePage() {
                 <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
                 <h4 className="text-base font-bold text-emerald-900">Mükemmel! Bütünlük Kusuru Bulunmadı</h4>
                 <p className="text-xs text-emerald-700 mt-1">
-                  Tüm ölçütler ÖDR raporuna dahil edilmiş ve PUKÖ kanıtları eksiksiz aktarılmıştır.
+                  Tüm ölçütler ÖDR raporuna dahil edilmiş, PUKÖ kanıtları eksiksiz aktarılmış ve boş aşama bulunmamaktadır.
                 </p>
               </div>
             ) : stressActiveTab === 'odryok' ? (
@@ -508,7 +568,7 @@ export default function IzlemePage() {
                   ))}
                 </div>
               )
-            ) : (
+            ) : stressActiveTab === 'kanitfark' ? (
               (stressResults?.asamadaVarOdrdeYok.length || 0) === 0 ? (
                 <div className="p-8 text-center text-slate-400 text-sm">Aşamalardaki tüm kanıtlar ÖDR raporunda mevcuttur.</div>
               ) : (
@@ -539,6 +599,90 @@ export default function IzlemePage() {
                         className="text-xs font-bold text-amber-600 hover:text-amber-800 flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-lg hover:bg-amber-50"
                       >
                         ÖDR'ye Ekle <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : stressActiveTab === 'bosasama' ? (
+              (stressResults?.bosAsamalar?.length || 0) === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-sm">Tüm ölçüt aşamaları eksiksiz doldurulmuştur.</div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {stressResults?.bosAsamalar.map((item, idx) => (
+                    <div key={idx} className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50 px-3 rounded-xl transition-colors">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 font-mono font-bold text-xs shrink-0">
+                          {item.kod}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-600 shrink-0">
+                          {item.asama_adi}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-800 truncate" title={item.durum_aciklamasi}>
+                            {item.durum_aciklamasi}
+                          </p>
+                          <p className="text-[11px] text-slate-400 truncate">
+                            {item.olcut_adi}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setIsStressModalOpen(false);
+                          router.push(getAsamaRoute(item.alt_olcut_id, item.puko_asamasi));
+                        }}
+                        className="text-xs font-bold text-rose-600 hover:text-rose-800 flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-lg hover:bg-rose-50"
+                      >
+                        Aşamaya Git <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )) : (
+              (stressResults?.ingilizceOdrSorunlari?.length || 0) === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-sm">İngilizce ÖDR içeriklerinde ve kanıt bağlantılarında herhangi bir kusur bulunamadı.</div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {stressResults?.ingilizceOdrSorunlari.map((item, idx) => (
+                    <div key={idx} className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50 px-3 rounded-xl transition-colors">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="px-2.5 py-1 rounded-md bg-purple-50 text-purple-700 font-mono font-bold text-xs shrink-0">
+                          {item.kod}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-semibold shrink-0 ${
+                          item.sorun_tipi === 'bos_veya_kopyalanmis' ? 'bg-purple-100 text-purple-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {item.sorun_tipi === 'bos_veya_kopyalanmis' ? 'İçerik Eksik / TR Kopyası' : 'Eksik Kanıt Bağlantısı'}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-800 truncate" title={item.aciklama}>
+                            {item.aciklama}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[11px] text-slate-400 truncate">
+                              {item.olcut_adi}
+                            </span>
+                            {item.eksik_kanitlar && item.eksik_kanitlar.length > 0 && (
+                              <span className="inline-flex gap-1 flex-wrap">
+                                {item.eksik_kanitlar.map((label, lIdx) => (
+                                  <span key={lIdx} className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                                    {label}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setIsStressModalOpen(false);
+                          router.push(`/olcutler/${item.alt_olcut_id}/ozdegerlendirme`);
+                        }}
+                        className="text-xs font-bold text-purple-600 hover:text-purple-800 flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-lg hover:bg-purple-50"
+                      >
+                        ÖDR'ye Git <ChevronRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ))}

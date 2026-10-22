@@ -640,7 +640,11 @@
     "explanation_missing": "Explanation text is missing or too short.",
     "evidence_missing": "Evidence document is not uploaded.",
     "citation_missing": "Uploaded evidence is not properly cited in the explanation.",
-    "puko_incomplete": "All 5 PDCA phases are not fully approved."
+    "puko_incomplete": "All 5 PDCA phases are not fully approved.",
+    "tab_english_odr": "English Self-Evaluation Issues",
+    "english_odr_missing_or_copied": "English self-evaluation is missing or unedited copy of Turkish text",
+    "english_odr_evidence_missing": "Missing evidence link in English self-evaluation",
+    "go_to_odr": "Go to Self-Evaluation"
   },
   "PresentationMode": {
     "enter": "Presentation Mode",
