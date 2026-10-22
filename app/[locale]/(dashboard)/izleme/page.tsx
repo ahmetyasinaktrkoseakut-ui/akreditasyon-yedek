@@ -558,11 +558,11 @@ export default function IzlemePage() {
                       <button
                         onClick={() => {
                           setIsStressModalOpen(false);
-                          router.push('/raporlar');
+                          router.push(`/olcutler/${item.alt_olcut_id}/ozdegerlendirme`);
                         }}
                         className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-lg hover:bg-indigo-50"
                       >
-                        ÖDR Oluştur <ChevronRight className="w-3.5 h-3.5" />
+                        ÖDR'ye Git <ChevronRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ))}
@@ -594,11 +594,11 @@ export default function IzlemePage() {
                       <button
                         onClick={() => {
                           setIsStressModalOpen(false);
-                          router.push('/raporlar');
+                          router.push(`/olcutler/${item.alt_olcut_id}/ozdegerlendirme`);
                         }}
                         className="text-xs font-bold text-amber-600 hover:text-amber-800 flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-lg hover:bg-amber-50"
                       >
-                        ÖDR'ye Ekle <ChevronRight className="w-3.5 h-3.5" />
+                        ÖDR'ye Git <ChevronRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ))}

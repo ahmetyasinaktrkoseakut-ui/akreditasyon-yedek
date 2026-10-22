@@ -153,23 +153,32 @@ export interface HtmlEvidenceLink {
 
 /**
  * HTML içeriğindeki tüm anchor (<a>) etiketlerini ayıklar ve href ile data-evidence-id niteliklerini çıkarır.
+ * Çok satırlı bağlantıları ve zengin metin düzenleyici etiketlerini desteklemek için /gis bayrağı kullanır.
  */
 export function extractEvidenceLinks(html: string | null | undefined): HtmlEvidenceLink[] {
   if (!html) return [];
   const links: HtmlEvidenceLink[] = [];
-  const anchorRegex = /<a\b([^>]*)>(.*?)<\/a>/gi;
+  const anchorRegex = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
   let match: RegExpExecArray | null;
   while ((match = anchorRegex.exec(html)) !== null) {
     const attrs = match[1];
-    const text = match[2];
+    const rawText = match[2];
 
     const hrefMatch = attrs.match(/\bhref=["']([^"']*)["']/i);
     const idMatch = attrs.match(/\bdata-evidence-id=["']([^"']*)["']/i);
 
+    const cleanText = rawText
+      ? rawText
+          .replace(/<[^>]*>/g, '')
+          .replace(/&nbsp;/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      : undefined;
+
     links.push({
       href: hrefMatch ? hrefMatch[1].trim() : undefined,
       evidenceId: idMatch ? idMatch[1].trim() : undefined,
-      text: text ? text.replace(/<[^>]*>/g, '').trim() : undefined,
+      text: cleanText,
     });
   }
   return links;
@@ -666,59 +675,43 @@ export function denetleIngilizceOdr(params: {
         return issues;
       }
     }
-
-    // Durum C: İngilizce metinde hala Türkçe [Kanıt N] etiketleri kalmışsa (PUKÖ'den çekilip İngilizceye dönüştürülmediğinin göstergesi)
-    if (/\[\s*kan[ıi]t\s*\d+\s*\]/i.test(icerikEn || '')) {
-      issues.push({
-        alt_olcut_id: altOlcutId,
-        kod,
-        olcut_adi: olcutAdi,
-        sorun_tipi: 'bos_veya_kopyalanmis',
-        aciklama: 'İngilizce ÖDR metninde çevrilmemiş Türkçe [Kanıt N] atıfları bulunuyor.',
-      });
-      return issues;
-    }
   }
 
   if (isEnEmpty) {
     return issues;
   }
 
-  // 2. Kontrol: İngilizce metindeki [Evidence N] ifadelerini denetle
+  // 2. Kontrol: İngilizce metindeki kanıt atıflarını ([Evidence N] veya [Kanıt N]) denetle
   const htmlEn = icerikEn || '';
   const evidenceList = Array.isArray(kanitlar) ? kanitlar : [];
   const anchorLinks = extractEvidenceLinks(htmlEn);
 
-  // Metindeki tüm [Evidence N] ifadelerini regex ile tara
-  const evidenceRegex = /\[\s*Evidence\s*(\d+)\s*\]/gi;
+  // Metindeki tüm [Evidence N] ve [Kanıt N] ifadelerini regex ile tara
+  const citationRegex = /\[\s*(?:Evidence|Kan[ıi]t)\s*(\d+)\s*\]/gi;
   const mentionedNumbers = new Set<number>();
   let match: RegExpExecArray | null;
-  while ((match = evidenceRegex.exec(htmlEn)) !== null) {
+  while ((match = citationRegex.exec(htmlEn)) !== null) {
     mentionedNumbers.add(parseInt(match[1], 10));
   }
 
-  // Anchor etiketleri dışındaki düz metin [Evidence N] ifadelerini tespit et
-  const textWithoutAnchors = htmlEn.replace(/<a\b[^>]*>(.*?)<\/a>/gi, ' ');
+  // Anchor etiketleri dışındaki düz metin [Evidence N] ve [Kanıt N] ifadelerini tespit et
+  // Çok satırlı bağlantıları da temizleyebilmek için [\s\S]*? deseni kullanılır
+  const textWithoutAnchors = htmlEn.replace(/<a\b[^>]*>[\s\S]*?<\/a>/gi, ' ');
   const plainTextNumbers = new Set<number>();
   let plainMatch: RegExpExecArray | null;
-  while ((plainMatch = evidenceRegex.exec(textWithoutAnchors)) !== null) {
+  while ((plainMatch = citationRegex.exec(textWithoutAnchors)) !== null) {
     plainTextNumbers.add(parseInt(plainMatch[1], 10));
   }
 
   const missingEvidenceLabels: string[] = [];
 
   mentionedNumbers.forEach(evNum => {
-    // A) Düz metinse kesinlikle eksik
-    if (plainTextNumbers.has(evNum)) {
-      missingEvidenceLabels.push(`[Evidence ${evNum}]`);
-      return;
-    }
-
-    // B) KULLANICI KURALI: [Evidence N] bağlantısı yalnızca herhangi bir kanıta değil,
-    // kanitlar listesindeki N'inci kanıta (1-based: evNum - 1) bağlanmalı;
-    // bağlantının URL'si de o kaydın URL'siyle eşleşmeli!
+    // 1. Hedef kanıt nesnesini bul:
+    // Sırasıyla e.no === evNum, e.evidence_no === evNum veya 1-based index (evNum - 1)
     const targetIdx = evNum - 1;
-    const nThEvidence = targetIdx >= 0 && targetIdx < evidenceList.length ? evidenceList[targetIdx] : null;
+    const nThEvidence = 
+      evidenceList.find(e => Number(e.no) === evNum || Number(e.evidence_no) === evNum) ||
+      (targetIdx >= 0 && targetIdx < evidenceList.length ? evidenceList[targetIdx] : null);
 
     if (!nThEvidence) {
       // Kanıt listesinde N'inci kanıt kaydı yok!
@@ -734,10 +727,11 @@ export function denetleIngilizceOdr(params: {
     const evBucket = (nThEvidence.bucket || urlRef?.bucket || 'dokumanlar').trim();
     const evHasUrl = Boolean(evUrl || evAnnotatedUrl || evStoragePath);
 
-    // [Evidence evNum] metnini içeren ve N'inci kanıt kaydının URL/ID'siyle eşleşen bağlantıyı ara
+    // 2. Bu kanıt numarasına ait geçerli bir bağlantı var mı?
+    // Hem EN düğmesiyle eklenen [Evidence N] hem de TR/PUKÖ kaynaklı [Kanıt N] bağlantıları kabul edilir.
     const hasValidLink = anchorLinks.some(link => {
       const linkText = link.text || '';
-      const textMatches = new RegExp(`\\[?\\s*Evidence\\s*${evNum}\\b`, 'i').test(linkText);
+      const textMatches = new RegExp(`\\[?\\s*(?:Evidence|Kan[ıi]t)\\s*${evNum}\\b`, 'i').test(linkText);
       if (!textMatches) return false;
 
       const linkHref = link.href?.trim();
