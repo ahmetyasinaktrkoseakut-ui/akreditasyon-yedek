@@ -220,7 +220,8 @@ export default function IzlemePage() {
         supabase
           .from('ozdegerlendirme_raporlari')
           .select('alt_olcut_id, icerik, icerik_en, kanitlar, onay_durumu, donem_id')
-          .eq('donem_id', selectedPeriod.id),
+          .eq('donem_id', selectedPeriod.id)
+          .order('olusturulma_tarihi', { ascending: true }),
       ]);
 
       if (pukoRes.error || altRes.error || odrRes.error) {
@@ -241,7 +242,7 @@ export default function IzlemePage() {
       } else if (result.asamadaVarOdrdeYok.length > 0) {
         setStressActiveTab('kanitfark');
       } else {
-        setStressActiveTab('bosasama');
+        setStressActiveTab(result.bosAsamalar?.length > 0 ? 'bosasama' : 'ingilizceodr');
       }
 
       setIsStressModalOpen(true);
@@ -251,7 +252,7 @@ export default function IzlemePage() {
     } finally {
       setIsTestingStress(false);
     }
-  };
+  }
 
   const durumData = [
     { name: t('charts.approved'), value: stats.onaylanan, color: '#10b981' }, // emerald-500

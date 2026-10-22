@@ -106,6 +106,7 @@ export interface StresTestiSonucu {
  */
 export function isHtmlContentEmpty(html: string | null | undefined): boolean {
   if (!html) return true;
+  if (/<(img|iframe|table|svg)\b/i.test(html)) return false;
   const stripped = html
     .replace(/<[^>]*>/g, '')
     .replace(/&nbsp;/g, ' ')
