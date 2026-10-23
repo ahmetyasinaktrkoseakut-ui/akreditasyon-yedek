@@ -684,7 +684,40 @@ export function denetleIngilizceOdr(params: {
 
   // 2. Kontrol: İngilizce metindeki kanıt atıflarını ([Evidence N] veya [Kanıt N]) denetle
   const htmlEn = icerikEn || '';
-  const evidenceList = Array.isArray(kanitlar) ? kanitlar : [];
+  
+  // ÖDR'deki kanıtlar ve PUKÖ aşamalarındaki kanıtları birleştir
+  const rawOdrKanitlar = Array.isArray(kanitlar) ? kanitlar : [];
+  const pukoKanitlar: any[] = [];
+  if (pukoStages && Array.isArray(pukoStages)) {
+    const orderMap: Record<string, number> = { planlama: 1, uygulama: 2, kontrol: 3, onlem: 4, iyilestirme: 4, olgunluk: 5 };
+    const sortedStages = [...pukoStages].sort((a, b) => (orderMap[a.puko_asamasi?.toLowerCase()] || 99) - (orderMap[b.puko_asamasi?.toLowerCase()] || 99));
+    
+    sortedStages.forEach(st => {
+      if (Array.isArray(st.kanit_dosyalari)) {
+        st.kanit_dosyalari.forEach(k => {
+          if (k) pukoKanitlar.push(k);
+        });
+      }
+    });
+  }
+
+  // ÖDR + PUKÖ birleşik kanıt havuzu
+  const combinedEvidenceList: any[] = [...rawOdrKanitlar];
+  pukoKanitlar.forEach(pk => {
+    const pkUrl = (pk.url || pk.dosya_url || pk.storagePath || '').trim();
+    const pkId = (pk.evidence_id || pk.id || '').trim();
+    const alreadyExists = combinedEvidenceList.some(e => {
+      const eUrl = (e.url || e.dosya_url || e.storagePath || '').trim();
+      const eId = (e.evidence_id || e.id || '').trim();
+      if (pkId && eId && pkId === eId) return true;
+      if (pkUrl && eUrl && (pkUrl === eUrl || urlsMatch(pkUrl, eUrl))) return true;
+      return false;
+    });
+    if (!alreadyExists) {
+      combinedEvidenceList.push(pk);
+    }
+  });
+
   const anchorLinks = extractEvidenceLinks(htmlEn);
 
   // Metindeki tüm [Evidence N] ve [Kanıt N] ifadelerini regex ile tara
@@ -711,8 +744,10 @@ export function denetleIngilizceOdr(params: {
     // Sırasıyla e.no === evNum, e.evidence_no === evNum veya 1-based index (evNum - 1)
     const targetIdx = evNum - 1;
     const nThEvidence = 
-      evidenceList.find(e => Number(e.no) === evNum || Number(e.evidence_no) === evNum) ||
-      (targetIdx >= 0 && targetIdx < evidenceList.length ? evidenceList[targetIdx] : null);
+      combinedEvidenceList.find(e => Number(e.no) === evNum || Number(e.evidence_no) === evNum) ||
+      (targetIdx >= 0 && targetIdx < combinedEvidenceList.length ? combinedEvidenceList[targetIdx] : null) ||
+      pukoKanitlar.find(e => Number(e.no) === evNum || Number(e.evidence_no) === evNum) ||
+      (targetIdx >= 0 && targetIdx < pukoKanitlar.length ? pukoKanitlar[targetIdx] : null);
 
     if (!nThEvidence) {
       // Kanıt listesinde N'inci kanıt kaydı yok!
@@ -730,31 +765,46 @@ export function denetleIngilizceOdr(params: {
 
     // 2. Bu kanıt numarasına ait geçerli bir bağlantı var mı?
     // Hem EN düğmesiyle eklenen [Evidence N] hem de TR/PUKÖ kaynaklı [Kanıt N] bağlantıları kabul edilir.
+    // Ayrıca bağlantı doğrudan bu kanıtın hedefine gidiyorsa veya ID'si eşleşiyorsa da kabul edilir.
     const hasValidLink = anchorLinks.some(link => {
       const linkText = link.text || '';
       const textMatches = new RegExp(`\\[?\\s*(?:Evidence|Kan[ıi]t)\\s*${evNum}\\b`, 'i').test(linkText);
-      if (!textMatches) return false;
 
       const linkHref = link.href?.trim();
       const linkHasHref = Boolean(linkHref && linkHref !== '#');
 
-      // Href mevcutsa N'inci kanıtın URL'si ve bucket'ı ile birebir eşleşmeli!
+      // 1. Bağlantı metninde Evidence N veya Kanıt N geçiyorsa:
+      if (textMatches) {
+        if (linkHasHref && evHasUrl) {
+          const matchesHref = Boolean(
+            (evUrl && urlsMatch(linkHref, evUrl, evBucket)) ||
+            (evAnnotatedUrl && urlsMatch(linkHref, evAnnotatedUrl, evBucket)) ||
+            (evStoragePath && urlsMatch(linkHref, evStoragePath, evBucket))
+          );
+          if (matchesHref) return true;
+        }
+        if (link.evidenceId && evId && link.evidenceId === evId) {
+          return true;
+        }
+        if (linkHasHref && !evHasUrl) {
+          return true;
+        }
+      }
+
+      // 2. Bağlantı metninde numara yazmasa bile doğrudan bu kanıtın ID veya URL'sine gidiyorsa:
+      if (link.evidenceId && evId && link.evidenceId === evId) {
+        return true;
+      }
       if (linkHasHref && evHasUrl) {
         const matchesHref = Boolean(
           (evUrl && urlsMatch(linkHref, evUrl, evBucket)) ||
           (evAnnotatedUrl && urlsMatch(linkHref, evAnnotatedUrl, evBucket)) ||
           (evStoragePath && urlsMatch(linkHref, evStoragePath, evBucket))
         );
-        if (!matchesHref) return false;
+        if (matchesHref) {
+          return true;
+        }
       }
-
-      // ID kontrolü
-      if (link.evidenceId && evId && link.evidenceId !== evId) {
-        return false;
-      }
-
-      if (linkHasHref && evHasUrl) return true;
-      if (link.evidenceId && evId && link.evidenceId === evId) return true;
 
       return false;
     });
