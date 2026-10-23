@@ -3,6 +3,7 @@
 import { useState, useEffect, use } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { Loader2, Plus, Info, Save, Link as LinkIcon, Settings, CalendarDays, ExternalLink, Trash2, Pencil, Eye, Inbox, CheckCircle2, XCircle, Clock, FileText, Download, Copy, Check, AlertTriangle, X } from 'lucide-react';
+import { degerlendirTekAsama } from '@/lib/pukoStresTesti';
 import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
 import { logAction } from '@/lib/logger';
@@ -13,7 +14,6 @@ import { validateFileSize, getAssignedLetter } from '@/lib/utils';
 import { validateUploadedFile } from '@/lib/fileValidation';
 import { usePeriod } from '@/contexts/PeriodContext';
 import EvidenceAnnotatorModal from '@/components/EvidenceAnnotatorModal';
-import { degerlendirTekAsama } from '@/lib/pukoStresTesti';
 import { useRef } from 'react';
 
 interface Eylem {
@@ -80,7 +80,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
     docName: string;
   } | null>(null);
 
-  // Stres Testi Uyarısı (Kayıt sonrası bilgilendirme)
+  // Stres Testi Bilgilendirici Uyarı State'i
   const [stressWarningMessage, setStressWarningMessage] = useState<string | null>(null);
 
   // Direct fresh database persistence to prevent React stale closure bugs
@@ -633,7 +633,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       }
 
       alert(t('save_success'));
-      fetchData(); 
+      fetchData();
 
       // Akreditasyon Stres Testi Değerlendirmesi (Kayıt başarılı olduktan sonra bilgilendirici uyarı)
       try {
@@ -646,9 +646,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
           kanitDosyalari: dokumanlar
         });
 
-        if (stressCheck.isTextWithoutEvidence) {
-          setStressWarningMessage('Stres Testi Uyarısı: Açıklama metni kaydedildi ancak bu aşamaya henüz hiç kanıt belgesi eklenmedi.');
-        } else if (stressCheck.uncitedEvidences.length > 0) {
+        if (stressCheck.uncitedEvidences.length > 0) {
           const uncitedList = stressCheck.uncitedEvidences.map(e => `[Kanıt ${e.kanit_no}]`).join(', ');
           setStressWarningMessage(`Stres Testi Uyarısı: Eklenen kanıtlardan (${uncitedList}) metin içerisinde henüz atıf almamıştır.`);
         } else {
