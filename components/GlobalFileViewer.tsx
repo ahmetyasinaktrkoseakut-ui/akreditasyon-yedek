@@ -15,10 +15,24 @@ export default function GlobalFileViewer() {
   const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
+    const handleGlobalMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const anchor = target?.closest('a');
+      if (anchor && anchor.href) {
+        if (anchor.getAttribute('data-bypass-viewer') === 'true') return;
+        const appOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+        if (isInternalStorageUrl(anchor.href, appOrigin) && !anchor.hasAttribute('download')) {
+          anchor.removeAttribute('target');
+          anchor.target = '_self';
+        }
+      }
+    };
+
     const handleGlobalClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const anchor = target.closest('a');
       if (anchor && anchor.href) {
+        if (anchor.getAttribute('data-bypass-viewer') === 'true') return;
         const url = anchor.href;
         const isDownload = anchor.hasAttribute('download');
         const appOrigin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -29,8 +43,10 @@ export default function GlobalFileViewer() {
         if (isInternal && !isDownload) {
           // Dahili linklerde tarayıcının yeni sekme açmasını engelle
           anchor.removeAttribute('target');
+          anchor.target = '_self';
           e.preventDefault();
           e.stopPropagation();
+          e.stopImmediatePropagation();
 
           const cleanUrl = url.split(/[?#]/)[0].toLowerCase();
                     const isImage = /\.(png|jpe?g|gif|webp|svg)/i.test(cleanUrl) || /\.(png|jpe?g|gif|webp|svg)/i.test(url);
@@ -112,8 +128,12 @@ export default function GlobalFileViewer() {
       }
     };
 
+    document.addEventListener('mousedown', handleGlobalMouseDown, { capture: true });
     document.addEventListener('click', handleGlobalClick, { capture: true });
-    return () => document.removeEventListener('click', handleGlobalClick, { capture: true });
+    return () => {
+      document.removeEventListener('mousedown', handleGlobalMouseDown, { capture: true });
+      document.removeEventListener('click', handleGlobalClick, { capture: true });
+    };
   }, []);
 
   useEffect(() => {
@@ -204,6 +224,7 @@ export default function GlobalFileViewer() {
                   href={viewerUrl}
                   target="_blank"
                   rel="noopener noreferrer"
+                  data-bypass-viewer="true"
                   className="p-2 hover:bg-slate-100 dark:hover:bg-[#1e2d4a] rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors flex items-center gap-1.5 text-xs font-bold"
                   title="Yeni Sekmede Aç"
                 >
