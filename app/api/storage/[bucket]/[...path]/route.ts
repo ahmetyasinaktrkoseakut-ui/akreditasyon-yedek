@@ -17,7 +17,7 @@ async function handleStorageProxy(
     }
 
     // Sadece izin verilen bucket'lar
-    if (bucket !== 'dokumanlar' && bucket !== 'kanit_dosyalari' && bucket !== 'sinav_arsivleri') {
+    if (bucket !== 'dokumanlar' && bucket !== 'kanit_dosyalari') {
       return NextResponse.json({ error: 'Gecersiz depolama alani.' }, { status: 403 });
     }
 
@@ -84,25 +84,7 @@ async function handleStorageProxy(
     let hasAccess = isAdmin || isObserver;
     const decodedPath = decodeURIComponent(filePath);
 
-    // Özel Sınav ve Değerlendirme Arşivi Koruması: Sadece ilgili dosya sahibi kullanıcı ve yöneticiler görebilir.
-    if (bucket === 'sinav_arsivleri') {
-      if (isAdmin) {
-        hasAccess = true;
-      } else {
-        const { data: mapping } = await supabaseAdmin
-          .from('dosya_yetkilendirmeleri')
-          .select('owner_id')
-          .eq('bucket', 'sinav_arsivleri')
-          .eq('storage_path', decodedPath)
-          .maybeSingle();
-
-        hasAccess = mapping?.owner_id === user.id;
-      }
-
-      if (!hasAccess) {
-        return NextResponse.json({ error: 'Bu sınav arşiv dosyasına erişim yetkiniz bulunmamaktadır.' }, { status: 403 });
-      }
-    } else if (!hasAccess) {
+    if (!hasAccess) {
       // Birim Sorumlusu veya standart kullanici: dosya_yetkilendirmeleri uzerinden katı denetle
       const { data: mapping } = await supabaseAdmin
         .from('dosya_yetkilendirmeleri')
@@ -171,7 +153,30 @@ async function handleStorageProxy(
       return NextResponse.json({ error: 'Bu belgeyi goruntuleme yetkiniz bulunmamaktadir.' }, { status: 403 });
     }
 
-    // 3. Dosyayi Storage uzerinden getir
+    // 3. Dosyayi Denetle / Getir (HEAD isteklerinde dosya indirilmez, yalnizca metadata sorgulanir)
+    if (isHead) {
+      const { data: fileInfo, error: infoError } = await supabaseAdmin.storage
+        .from(bucket)
+        .info(decodedPath);
+
+      if (infoError || !fileInfo) {
+        return NextResponse.json({ error: 'Dosya bulunamadi.' }, { status: 404 });
+      }
+
+      const headers = new Headers();
+      headers.set('Content-Type', fileInfo.contentType || 'application/octet-stream');
+      headers.set('Content-Length', (fileInfo.size ?? 0).toString());
+      headers.set('Cache-Control', 'private, no-cache, no-store, max-age=0, must-revalidate, proxy-revalidate');
+      headers.set('Pragma', 'no-cache');
+      headers.set('Expires', '0');
+      headers.set('Content-Disposition', 'inline');
+
+      return new NextResponse(null, {
+        status: 200,
+        headers
+      });
+    }
+
     const { data: fileBlob, error: downloadError } = await supabaseAdmin.storage
       .from(bucket)
       .download(decodedPath);
@@ -187,14 +192,6 @@ async function handleStorageProxy(
     headers.set('Pragma', 'no-cache');
     headers.set('Expires', '0');
     headers.set('Content-Disposition', 'inline');
-
-    // HEAD istegi icin yalnizca basliklar ve 200 status donulur
-    if (isHead) {
-      return new NextResponse(null, {
-        status: 200,
-        headers
-      });
-    }
 
     return new NextResponse(fileBlob, {
       status: 200,
