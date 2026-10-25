@@ -21,9 +21,13 @@ export default function GlobalFileViewer() {
       if (anchor && anchor.href) {
         if (anchor.getAttribute('data-bypass-viewer') === 'true') return;
         const appOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-        if (isInternalStorageUrl(anchor.href, appOrigin) && !anchor.hasAttribute('download')) {
+        const isInternal = isInternalStorageUrl(anchor.href, appOrigin);
+        if (isInternal && !anchor.hasAttribute('download')) {
           anchor.removeAttribute('target');
           anchor.target = '_self';
+        } else if (!isInternal && !anchor.hasAttribute('download')) {
+          anchor.target = '_blank';
+          anchor.rel = 'noopener noreferrer';
         }
       }
     };
@@ -124,6 +128,9 @@ export default function GlobalFileViewer() {
           };
 
           resolveAndOpen();
+        } else if (!isInternal && !isDownload) {
+          anchor.target = '_blank';
+          anchor.rel = 'noopener noreferrer';
         }
       }
     };
