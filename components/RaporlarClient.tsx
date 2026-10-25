@@ -472,7 +472,7 @@ export default function RaporlarClient() {
                                 <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
                                   <div
                                     className="prose prose-sm max-w-none prose-slate"
-                                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(combinedText) }}
+                                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(sanitizeReportHtmlLinks(combinedText, typeof window !== 'undefined' ? window.location.origin : '')) }}
                                   />
                                 </div>
 
@@ -499,7 +499,7 @@ export default function RaporlarClient() {
                                           <a
                                             key={k.url}
                                             href={toProxyStorageUrl(k.url, typeof window !== 'undefined' ? window.location.origin : '') || k.url}
-                                             target="_blank"
+
                                             rel="noopener noreferrer"
                                             className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
                                           >
@@ -534,7 +534,7 @@ export default function RaporlarClient() {
                                         <a
                                           key={k.url}
                                           href={toProxyStorageUrl(k.url, typeof window !== 'undefined' ? window.location.origin : '') || k.url}
-                                             target="_blank"
+
                                           rel="noopener noreferrer"
                                           className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
                                         >

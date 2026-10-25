@@ -195,8 +195,9 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
         cleanIcerikEn = cleanIcerikEn.replace(/<hr\s*\/?>/gi, '');
         cleanIcerikEn = cleanIcerikEn.replace(/Olgunluk Düzeyi Puanı.*?\d\s*\/\s*\d/gi, '');
 
-        setRaporMetni(cleanIcerik);
-        setRaporMetniEn(cleanIcerikEn);
+        const appOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+        setRaporMetni(sanitizeReportHtmlLinks(cleanIcerik, appOrigin));
+        setRaporMetniEn(sanitizeReportHtmlLinks(cleanIcerikEn, appOrigin));
         setKanitlar(raporData?.kanitlar ?? []);
         setRaporOlusturuldu(true);
         setOnayDurumu(raporData?.onay_durumu || 'bekliyor');
@@ -398,7 +399,7 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
                                       (k.annotated_url && phaseText.includes(k.annotated_url)) ||
                                       (k.evidence_id && phaseText.includes(k.evidence_id));
               if (!isAlreadyInline) {
-                unplacedEvidenceStrings.push(`<a href="${ev.url}" target="_blank" rel="noopener noreferrer" style="color: #ea580c; text-decoration: underline;">[Kanıt ${ev.no}]</a>`);
+                unplacedEvidenceStrings.push(`<a href="${ev.url}" rel="noopener noreferrer" style="color: #ea580c; text-decoration: underline;">[Kanıt ${ev.no}]</a>`);
               }
             });
             
@@ -654,7 +655,7 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
 
     // Hedef 'en' ise [Evidence X], 'tr' ise [Kanıt X]
     const label = target === 'en' ? `[Evidence ${index + 1}]` : `[Kanıt ${index + 1}]`;
-    const anchorHTML = `&nbsp;<a href="${doc.url}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; font-weight: bold; text-decoration: underline; cursor: pointer;">${label}</a>&nbsp;`;
+    const anchorHTML = `&nbsp;<a href="${doc.url}" rel="noopener noreferrer" style="color: #2563eb; font-weight: bold; text-decoration: underline; cursor: pointer;">${label}</a>&nbsp;`;
     
     if (target === 'tr') {
       if (editorRef.current) {
@@ -720,7 +721,7 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
       
       // Metin içine ekle - [Kanıt X] formatında
       const newIndex = updatedKanitlar.length;
-      const anchorHTML = `&nbsp;<a href="${publicUrl}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; font-weight: bold; text-decoration: underline; cursor: pointer;">[Kanıt ${newIndex}]</a>&nbsp;`;
+      const anchorHTML = `&nbsp;<a href="${publicUrl}" rel="noopener noreferrer" style="color: #2563eb; font-weight: bold; text-decoration: underline; cursor: pointer;">[Kanıt ${newIndex}]</a>&nbsp;`;
       
       if (editorRef.current) {
         editorRef.current.insertContent(anchorHTML);
@@ -1139,7 +1140,7 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
                             Kanıt {idx + 1}
                           </td>
                           <td className="py-3 px-4">
-                            <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-slate-700 hover:text-blue-600 font-medium flex items-center gap-2">
+                            <a href={toProxyStorageUrl(doc.url, typeof window !== 'undefined' ? window.location.origin : '') || doc.url} rel="noopener noreferrer" className="text-slate-700 hover:text-blue-600 font-medium flex items-center gap-2">
                               <LinkIcon className="w-4 h-4 text-slate-400" />
                               : ({doc.name})
                             </a>
