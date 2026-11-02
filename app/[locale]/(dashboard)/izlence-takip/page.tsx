@@ -45,17 +45,16 @@ export default async function IzlenceTakipPage() {
 
   const { data: izlenceler } = await supabase
     .from('ders_izlenceleri')
-    .select('ders_id, hoca_id, guncelleme_tarihi, icerik')
-    .order('guncelleme_tarihi', { ascending: false });
+    .select('ders_id, hoca_id, guncelleme_tarihi, icerik');
 
   const { data: profiller } = await supabase
     .from('profiller')
-    .select('id, ad_soyad, unvan');
+    .select('id, ad_soyad');
 
   // İzlence tam dolu mu kontrol et (5 ana bölüm)
   const isTrulyFilled = (icerik: any) => {
     if (!icerik) return false;
-    const hasGenel = Boolean((icerik.amac && String(icerik.amac).trim().length > 0) || (icerik.ogretimElemani && String(icerik.ogretimElemani).trim().length > 0));
+    const hasGenel = icerik.amac && icerik.amac.length > 5;
     const hasOC = Array.isArray(icerik.ogrenimCiktilari) && icerik.ogrenimCiktilari.some((oc: any) => oc.cikti);
     const hasHaftalik = Array.isArray(icerik.haftalikIcerik) && icerik.haftalikIcerik.length > 5;
     const hasDegerlendirme = Array.isArray(icerik.degerlendirme) && icerik.degerlendirme.some((d: any) => d.yuzde > 0);
@@ -175,7 +174,7 @@ export default async function IzlenceTakipPage() {
                       {hoca ? (
                         <div className="flex items-center gap-2 text-slate-600">
                           <User className="w-4 h-4 text-blue-500" />
-                          <span className="text-sm font-medium">{hoca.unvan} {hoca.ad_soyad}</span>
+                          <span className="text-sm font-medium">{hoca.ad_soyad}</span>
                         </div>
                       ) : (
                         <span className="text-xs text-slate-300 font-bold tracking-widest italic">HENÜZ ATANMAMIŞ</span>
