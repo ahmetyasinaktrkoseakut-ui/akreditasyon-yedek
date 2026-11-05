@@ -2,8 +2,14 @@
 
 import { useState, useEffect, use, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { Loader2, Info, FileSignature, FileText, CheckCircle2, FileSearch, Download, Save, Plus, Link as LinkIcon, Tv, Maximize2, Minimize2, ChevronRight, X, AlertTriangle } from 'lucide-react';
-import { degerlendirTekOdr, isHtmlContentEmpty } from '@/lib/pukoStresTesti';
+import { Loader2, Info, FileSignature, FileText, CheckCircle2, CheckCircle, FileSearch, Download, Save, Plus, Link as LinkIcon , AlertTriangle, X, ShieldAlert, Tv, Maximize2, Minimize2, ChevronRight } from 'lucide-react';
+import { degerlendirTekOdr, isHtmlContentEmpty, TekOdrDegerlendirmeSonucu } from '@/lib/pukoStresTesti';
+import {
+  getirStresIstisnalari,
+  kaydetStresIstisna,
+  buildIstisnaAnahtari,
+  StresIstisnaKaydi,
+} from '@/lib/stresIstisnaService';
 import StepPanel from '@/components/StepPanel';
 import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
@@ -42,24 +48,30 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
   const [rejectReason, setRejectReason] = useState('');
   const [isActionSubmitting, setIsActionSubmitting] = useState(false);
 
+  // İnsan İnisiyatifi Modalları (Kayıt ve Onay)
+  const [isSaveConfirmModalOpen, setIsSaveConfirmModalOpen] = useState(false);
+  const [saveWarningDetails, setSaveWarningDetails] = useState<string[]>([]);
+  const [isApproveConfirmModalOpen, setIsApproveConfirmModalOpen] = useState(false);
+  const [approveWarningDetails, setApproveWarningDetails] = useState<string[]>([]);
+  const [pendingApproveRecord, setPendingApproveRecord] = useState<any>(null);
+
   // Atıf (Kanıt) Yükleme Modalı
   const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false);
   const [odrStressWarning, setOdrStressWarning] = useState<string | null>(null);
+  const [istisnaMap, setIstisnaMap] = useState<Map<string, StresIstisnaKaydi>>(new Map());
+  const [rawStressCheck, setRawStressCheck] = useState<TekOdrDegerlendirmeSonucu | null>(null);
   const [newEvidenceName, setNewEvidenceName] = useState('');
   const [isUploadingInText, setIsUploadingInText] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const t = useTranslations('SelfEvaluation');
   const tPhase = useTranslations('Phase');
-  const tPres = useTranslations('PresentationMode');
   const locale = useLocale();
   const router = useRouter();
   const { selectedPeriod } = usePeriod();
-  const editorRef = useRef<RichTextEditorRef>(null);
-  const editorEnRef = useRef<RichTextEditorRef>(null);
-
+  const tPres = useTranslations('PresentationMode');
   const { isPresentationMode, setIsPresentationMode } = usePresentationMode();
-  const [activePreviewDoc, setActivePreviewDoc] = useState<any | null>(null);
+  const [activePreviewDoc, setActivePreviewDoc] = useState<any>(null);
 
   const handlePresentationContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = (e.target as HTMLElement).closest('a, [data-evidence-id], [data-evidence-no]');
@@ -114,17 +126,21 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
         setActivePreviewDoc(found);
         return;
       }
-      setActivePreviewDoc({
-        name: text || 'Kanıt Belgesi',
-        url: href,
-      });
     }
   };
+  const editorRef = useRef<RichTextEditorRef>(null);
+  const editorEnRef = useRef<RichTextEditorRef>(null);
 
   const fetchData = useCallback(async () => {
     if (!selectedPeriod) return;
     try {
       setIsLoading(true);
+
+      if (selectedPeriod?.id) {
+        getirStresIstisnalari(supabase, selectedPeriod.id)
+          .then(map => setIstisnaMap(map))
+          .catch(err => console.warn('İstisnalar yüklenemedi:', err));
+      }
 
       const { data: { user } } = await supabase.auth.getUser();
       let localUserIsAdmin = false;
@@ -194,9 +210,9 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
         cleanIcerikEn = cleanIcerikEn.replace(/<hr\s*\/?>/gi, '');
         cleanIcerikEn = cleanIcerikEn.replace(/Olgunluk Düzeyi Puanı.*?\d\s*\/\s*\d/gi, '');
 
-        const appOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-        setRaporMetni(sanitizeReportHtmlLinks(cleanIcerik, appOrigin));
-        setRaporMetniEn(sanitizeReportHtmlLinks(cleanIcerikEn, appOrigin));
+        const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+        setRaporMetni(sanitizeReportHtmlLinks(cleanIcerik, currentOrigin));
+        setRaporMetniEn(sanitizeReportHtmlLinks(cleanIcerikEn, currentOrigin));
         setKanitlar(raporData?.kanitlar ?? []);
         const hasReportContent =
           !isHtmlContentEmpty(cleanIcerik) ||
@@ -402,7 +418,9 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
                                       (k.annotated_url && phaseText.includes(k.annotated_url)) ||
                                       (k.evidence_id && phaseText.includes(k.evidence_id));
               if (!isAlreadyInline) {
-                unplacedEvidenceStrings.push(`<a href="${ev.url}" rel="noopener noreferrer" style="color: #ea580c; text-decoration: underline;">[Kanıt ${ev.no}]</a>`);
+                const origin = typeof window !== 'undefined' ? window.location.origin : '';
+                const safeUrl = toProxyStorageUrl(ev.url, origin);
+                unplacedEvidenceStrings.push(`<a href="${safeUrl}" rel="noopener noreferrer" style="color: #ea580c; text-decoration: underline;">[Kanıt ${ev.no}]</a>`);
               }
             });
             
@@ -437,8 +455,11 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
 
       const uniqueKanitlar = birlesikKanitlar;
 
-      setRaporMetni(birlesikMetin ?? '');
-      setRaporMetniEn(birlesikMetin ?? '');
+      const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+      const safeBirlesik = sanitizeReportHtmlLinks(birlesikMetin ?? '', currentOrigin);
+
+      setRaporMetni(safeBirlesik);
+      setRaporMetniEn(safeBirlesik);
       setKanitlar(uniqueKanitlar ?? []);
       setRaporOlusturuldu(true);
       
@@ -450,7 +471,7 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
     }
   };
 
-  const handleSave = async () => {
+  const executeSave = async () => {
     setIsSaving(true);
     try {
       if (!selectedPeriod) throw new Error("Aktif dönem seçili değil.");
@@ -479,36 +500,9 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
 
       setOnayDurumu('bekliyor');
       setRedNedeni(null);
+      setIsSaveConfirmModalOpen(false);
 
       alert(t('save_success'));
-
-      // Akreditasyon ve İngilizce ÖDR Stres Testi Değerlendirmesi (Kayıt başarılı olduktan sonra bilgilendirici uyarı)
-      try {
-        const { data: stageRows } = await supabase
-          .from('puko_degerlendirmeleri')
-          .select('alt_olcut_id, puko_asamasi, aciklama, kanit_dosyalari, durum, donem_id')
-          .eq('alt_olcut_id', String(resolvedParams.id))
-          .eq('donem_id', String(selectedPeriod.id));
-
-        const stressCheck = degerlendirTekOdr({
-          altOlcutId: resolvedParams.id,
-          kod: olcutDetay?.kod || '',
-          olcutAdi: olcutDetay?.olcut_adi || '',
-          icerikTr: raporMetni,
-          icerikEn: raporMetniEn,
-          kanitlar: kanitlar,
-          pukoStages: stageRows || [],
-        });
-
-        if (stressCheck.hasIssue && stressCheck.warningMessage) {
-          setOdrStressWarning(stressCheck.warningMessage);
-        } else {
-          setOdrStressWarning(null);
-        }
-      } catch (checkErr) {
-        console.error('ÖDR stres testi kontrol hatası:', checkErr);
-      }
-      // fetchData() ÇAĞIRILMAYACAK - State koruması için sadece sessizce kaydetiyoruz
     } catch (err: any) {
       console.error(err);
       alert(`${t('error_prefix')}${err.message}`);
@@ -517,10 +511,219 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
     }
   };
 
+  const filterActiveStressIssues = (
+    check: TekOdrDegerlendirmeSonucu,
+    istisnalar: Map<string, StresIstisnaKaydi>
+  ): TekOdrDegerlendirmeSonucu => {
+    if (!selectedPeriod) return check;
+
+    const temizUncited = (check.uncitedTrEvidences || []).filter(u => {
+      const key = buildIstisnaAnahtari({
+        donemId: selectedPeriod.id,
+        altOlcutId: resolvedParams.id,
+        sorunTipi: 'kanit_fark',
+        kanitKimligi: u.url || u.dosya_adi || u.asama,
+      });
+      return !istisnalar.get(key)?.aktif;
+    });
+
+    const temizIssues = (check.issues || []).filter(issue => {
+      const key = buildIstisnaAnahtari({
+        donemId: selectedPeriod.id,
+        altOlcutId: resolvedParams.id,
+        sorunTipi: issue.sorun_tipi,
+        kanitKimligi: issue.eksik_kanitlar?.[0] || 'genel',
+      });
+      return !istisnalar.get(key)?.aktif;
+    });
+
+    const warningDetails: string[] = [];
+    temizUncited.forEach(u => {
+      const label = u.kanit_no ? `[Kanıt ${u.kanit_no}]` : '[Kanıt]';
+      warningDetails.push(`${label} ${u.dosya_adi} (${u.asama} aşaması) - Türkçe ÖDR metninde henüz atıf almamıştır.`);
+    });
+    temizIssues.forEach(issue => {
+      warningDetails.push(issue.aciklama);
+    });
+
+    const hasIssue = warningDetails.length > 0;
+    return {
+      hasIssue,
+      warningMessage: hasIssue ? warningDetails.join(' | ') : null,
+      warningDetails,
+      issues: temizIssues,
+      uncitedTrEvidences: temizUncited,
+    };
+  };
+
+  const handleBannerAcceptExceptions = async () => {
+    if (!selectedPeriod || !rawStressCheck) return;
+    try {
+      setIsActionSubmitting(true);
+      const nextMap = new Map(istisnaMap);
+
+      for (const u of rawStressCheck.uncitedTrEvidences || []) {
+        const saved = await kaydetStresIstisna({
+          supabase,
+          donemId: selectedPeriod.id,
+          altOlcutId: resolvedParams.id,
+          sorunTipi: 'kanit_fark',
+          kanitKimligi: u.url || u.dosya_adi || u.asama,
+          aktif: true,
+          gerekce: 'ÖDR ekranından istisna olarak onaylandı',
+        });
+        nextMap.set(saved.istisna_anahtari, saved);
+      }
+
+      for (const issue of rawStressCheck.issues || []) {
+        const saved = await kaydetStresIstisna({
+          supabase,
+          donemId: selectedPeriod.id,
+          altOlcutId: resolvedParams.id,
+          sorunTipi: issue.sorun_tipi,
+          kanitKimligi: issue.eksik_kanitlar?.[0] || 'genel',
+          aktif: true,
+          gerekce: 'ÖDR ekranından istisna olarak onaylandı',
+        });
+        nextMap.set(saved.istisna_anahtari, saved);
+      }
+
+      setIstisnaMap(nextMap);
+      setOdrStressWarning(null);
+      alert('Tüm uyarılar istisna olarak kabul edildi ve kaydedildi.');
+    } catch (err: any) {
+      alert(`İstisna kaydedilemedi: ${err.message}`);
+    } finally {
+      setIsActionSubmitting(false);
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      if (!selectedPeriod) throw new Error("Aktif dönem seçili değil.");
+
+      // Kayıt öncesi stres testi değerlendirmesi yap
+      const { data: stageRows, error: stageRowsError } = await supabase
+        .from('puko_degerlendirmeleri')
+        .select('id, alt_olcut_id, puko_asamasi, aciklama, kanit_dosyalari, durum, red_nedeni, donem_id')
+        .eq('alt_olcut_id', String(resolvedParams.id))
+        .eq('donem_id', String(selectedPeriod.id));
+
+      if (stageRowsError) throw stageRowsError;
+
+      const rawCheck = degerlendirTekOdr({
+        altOlcutId: resolvedParams.id,
+        kod: olcutDetay?.kod || '',
+        olcutAdi: olcutDetay?.olcut_adi || '',
+        icerikTr: raporMetni,
+        icerikEn: raporMetniEn,
+        kanitlar: kanitlar,
+        pukoStages: stageRows || [],
+      });
+      setRawStressCheck(rawCheck);
+
+      const stressCheck = filterActiveStressIssues(rawCheck, istisnaMap);
+
+      // Eğer herhangi bir uyarı varsa inisiyatif modalını aç
+      if (stressCheck.hasIssue && stressCheck.warningDetails && stressCheck.warningDetails.length > 0) {
+        setSaveWarningDetails(stressCheck.warningDetails);
+        setOdrStressWarning(stressCheck.warningMessage);
+        setIsSaveConfirmModalOpen(true);
+        return;
+      }
+
+      setOdrStressWarning(null);
+      await executeSave();
+    } catch (err: any) {
+      console.error(err);
+      alert(`${t('error_prefix')}${err.message}`);
+    }
+  };
+
+  const executeApprove = async (recordToApprove: any) => {
+    setIsActionSubmitting(true);
+    try {
+      // 1. Önce anlık snapshot al
+      const [
+        { data: currentOdr, error: odrFetchErr },
+        { data: currentStages, error: stagesFetchErr }
+      ] = await Promise.all([
+        supabase
+          .from('ozdegerlendirme_raporlari')
+          .select('id, onay_durumu, red_nedeni')
+          .eq('id', recordToApprove.id)
+          .single(),
+        supabase
+          .from('puko_degerlendirmeleri')
+          .select('id, durum, red_nedeni')
+          .eq('alt_olcut_id', resolvedParams.id)
+          .eq('donem_id', selectedPeriod?.id)
+      ]);
+
+      if (odrFetchErr) throw odrFetchErr;
+      if (stagesFetchErr) throw stagesFetchErr;
+
+      // 2. ÖDR tablosunu güncelle
+      const { error: odrError } = await supabase
+        .from('ozdegerlendirme_raporlari')
+        .update({ onay_durumu: 'onaylandi', red_nedeni: null })
+        .eq('id', recordToApprove.id);
+      if (odrError) throw odrError;
+      
+      // 3. PUKÖ tablosundaki o alt ölçüte ait tüm kayıtları 'Onaylandı' yap
+      const { error: pukoError } = await supabase
+        .from('puko_degerlendirmeleri')
+        .update({ durum: 'Onaylandı', red_nedeni: null })
+        .eq('alt_olcut_id', resolvedParams.id)
+        .eq('donem_id', selectedPeriod?.id);
+
+      if (pukoError) {
+        // Telafi: ÖDR'yi eski haline geri döndür
+        try {
+          await supabase
+            .from('ozdegerlendirme_raporlari')
+            .update({
+              onay_durumu: currentOdr?.onay_durumu || 'bekliyor',
+              red_nedeni: currentOdr?.red_nedeni || null
+            })
+            .eq('id', recordToApprove.id);
+        } catch (rollbackErr) {
+          console.error("ÖDR telafi geri alma hatası:", rollbackErr);
+        }
+        throw new Error(`PUKÖ tablosu güncellenemedi (${pukoError.message}). ÖDR durumu geri alındı.`);
+      }
+
+      // Bildirim Ekleme İşlemi
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const targetUserId = recordToApprove.olusturan_id || recordToApprove.kullanici_id || recordToApprove.user_id || null;
+      
+      if (currentUser) {
+        try {
+          await supabase.from('bildirimler').insert({
+            gonderen_id: currentUser.id,
+            alici_id: targetUserId,
+            mesaj: `Özdeğerlendirme Raporunuz ONAYLANDI.`,
+            tip: 'onay',
+            ilgili_kayit_id: resolvedParams.id
+          });
+        } catch (e) {
+          console.warn("Bildirim tablosu henüz oluşturulmamış olabilir.", e);
+        }
+      }
+
+      setOnayDurumu('onaylandi');
+      setIsApproveConfirmModalOpen(false);
+      alert(t('approve_success'));
+    } catch (err: any) {
+      alert(`${t('error_approve')}${err.message}`);
+    } finally {
+      setIsActionSubmitting(false);
+    }
+  };
+
   const handleApprove = async () => {
     setIsActionSubmitting(true);
     try {
-      // ozdegerlendirme_raporlari tablosunu ve PUKÖ aşama kanıtlarını kontrol et
       const [
         { data: currentRecord, error: recordError },
         { data: stageRows, error: stageError },
@@ -544,7 +747,9 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
         throw new Error('Onaylanacak rapor kaydı bulunamadı. Lütfen önce raporu kaydediniz.');
       }
 
-      const stressCheck = degerlendirTekOdr({
+      setPendingApproveRecord(currentRecord);
+
+      const rawCheck = degerlendirTekOdr({
         altOlcutId: resolvedParams.id,
         kod: olcutDetay?.kod || '',
         olcutAdi: olcutDetay?.olcut_adi || '',
@@ -553,57 +758,20 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
         kanitlar: currentRecord?.kanitlar ?? kanitlar,
         pukoStages: stageRows || [],
       });
+      setRawStressCheck(rawCheck);
 
-      if (stressCheck.uncitedTrEvidences && stressCheck.uncitedTrEvidences.length > 0) {
-        if (stressCheck.warningMessage) {
-          setOdrStressWarning(stressCheck.warningMessage);
-        }
-        alert(`${stressCheck.warningMessage}\n\nLütfen eksik kanıt atıflarını ÖDR metnine ekleyip kaydettikten sonra onaylayınız.`);
+      const stressCheck = filterActiveStressIssues(rawCheck, istisnaMap);
+
+      // Eğer uyarı varsa yönetici inisiyatifi modalını aç
+      if (stressCheck.hasIssue && stressCheck.warningDetails && stressCheck.warningDetails.length > 0) {
+        setApproveWarningDetails(stressCheck.warningDetails);
+        setOdrStressWarning(stressCheck.warningMessage);
+        setIsApproveConfirmModalOpen(true);
         return;
       }
 
-      if (stressCheck.hasIssue && stressCheck.warningMessage) {
-        setOdrStressWarning(stressCheck.warningMessage);
-      } else {
-        setOdrStressWarning(null);
-      }
-
-      if (currentRecord) {
-        const { error } = await supabase
-          .from('ozdegerlendirme_raporlari')
-          .update({ onay_durumu: 'onaylandi', red_nedeni: null })
-          .eq('id', currentRecord.id);
-        if (error) throw error;
-        
-        // BİLDİRİM SENKRONİZASYONU: PUKÖ tablosundaki o alt ölçüte ait tüm kayıtları 'Onaylandı' yap
-        const { error: pukoError } = await supabase
-          .from('puko_degerlendirmeleri')
-          .update({ durum: 'Onaylandı', red_nedeni: null })
-          .eq('alt_olcut_id', resolvedParams.id)
-          .eq('donem_id', selectedPeriod?.id);
-        if (pukoError) throw pukoError;
-
-        // Bildirim Ekleme İşlemi
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
-        const targetUserId = currentRecord.olusturan_id || currentRecord.kullanici_id || currentRecord.user_id || null;
-        
-        if (currentUser) {
-          try {
-            await supabase.from('bildirimler').insert({
-              gonderen_id: currentUser.id,
-              alici_id: targetUserId,
-              mesaj: `Özdeğerlendirme Raporunuz ONAYLANDI.`,
-              tip: 'onay',
-              ilgili_kayit_id: resolvedParams.id
-            });
-          } catch (e) {
-            console.warn("Bildirim tablosu henüz oluşturulmamış olabilir.", e);
-          }
-        }
-
-        setOnayDurumu('onaylandi');
-      }
-      alert(t('approve_success'));
+      setOdrStressWarning(null);
+      await executeApprove(currentRecord);
     } catch (err: any) {
       alert(`${t('error_approve')}${err.message}`);
     } finally {
@@ -614,10 +782,6 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
   const handleRejectSubmit = async () => {
     if (!rejectReason.trim()) {
       alert(t('enter_reject_reason'));
-      return;
-    }
-    if (rejectReason.trim().length < 5) {
-      alert('Red gerekçesi en az 5 karakter olmalıdır.');
       return;
     }
     setIsActionSubmitting(true);
@@ -666,8 +830,10 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
 
     // Hedef 'en' ise [Evidence X], 'tr' ise [Kanıt X]
     const label = target === 'en' ? `[Evidence ${index + 1}]` : `[Kanıt ${index + 1}]`;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const safeUrl = toProxyStorageUrl(doc.url, origin);
     const evIdAttr = doc.evidence_id ? ` data-evidence-id="${doc.evidence_id}"` : '';
-    const anchorHTML = `&nbsp;<a${evIdAttr} href="${doc.url}" rel="noopener noreferrer" style="color: #2563eb; font-weight: bold; text-decoration: underline; cursor: pointer;">${label}</a>&nbsp;`;
+    const anchorHTML = `&nbsp;<a${evIdAttr} href="${safeUrl}" rel="noopener noreferrer" style="color: #2563eb; font-weight: bold; text-decoration: underline; cursor: pointer;">${label}</a>&nbsp;`;
     
     if (target === 'tr') {
       if (editorRef.current) {
@@ -733,7 +899,9 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
       
       // Metin içine ekle - [Kanıt X] formatında
       const newIndex = updatedKanitlar.length;
-      const anchorHTML = `&nbsp;<a href="${publicUrl}" rel="noopener noreferrer" style="color: #2563eb; font-weight: bold; text-decoration: underline; cursor: pointer;">[Kanıt ${newIndex}]</a>&nbsp;`;
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const safeUrl = toProxyStorageUrl(publicUrl, origin);
+      const anchorHTML = `&nbsp;<a href="${safeUrl}" rel="noopener noreferrer" style="color: #2563eb; font-weight: bold; text-decoration: underline; cursor: pointer;">[Kanıt ${newIndex}]</a>&nbsp;`;
       
       if (editorRef.current) {
         editorRef.current.insertContent(anchorHTML);
@@ -758,9 +926,9 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
     setIsEvidenceModalOpen(true);
   };
 
-  if (isLoading) {
-    return <div className="h-full flex items-center justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-blue-600" /></div>;
-  }
+
+
+
 
   // 3. Aşama: Denetçi / Sunum Modu Arayüzü (Eşit 2 Panel: Sol ÖDR Metni, Sağ Kanıt Önizleme)
   if (isPresentationMode) {
@@ -926,6 +1094,10 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
     );
   }
 
+  if (isLoading) {
+    return <div className="h-full flex items-center justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-blue-600" /></div>;
+  }
+
   return (
     <div className="p-8 max-w-[1400px] mx-auto animate-in fade-in duration-500">
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1004,7 +1176,7 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
 
       {/* Stres Testi Bilgilendirici Uyarı Bannerı */}
       {odrStressWarning && (
-        <div className="mb-6 p-4 rounded-xl border border-amber-200 bg-amber-50/90 text-amber-900 flex items-start justify-between gap-3 shadow-sm animate-in fade-in duration-300">
+        <div className="mb-6 p-4 rounded-xl border border-amber-200 bg-amber-50/90 text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm animate-in fade-in duration-300">
           <div className="flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
@@ -1014,13 +1186,26 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setOdrStressWarning(null)}
-            className="text-amber-500 hover:text-amber-800 p-1 rounded-lg hover:bg-amber-100/60 transition-colors shrink-0"
-            title="Kapat"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+            {rawStressCheck && (
+              <button
+                onClick={handleBannerAcceptExceptions}
+                disabled={isActionSubmitting}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50"
+                title="Bu uyarıları inceledim, sorun yok / istisna olarak kabul et"
+              >
+                <CheckCircle className="w-3.5 h-3.5" />
+                Sorun Yok (İstisna Kabul Et)
+              </button>
+            )}
+            <button
+              onClick={() => setOdrStressWarning(null)}
+              className="text-amber-500 hover:text-amber-800 p-1 rounded-lg hover:bg-amber-100/60 transition-colors shrink-0"
+              title="Kapat"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -1152,7 +1337,12 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
                             Kanıt {idx + 1}
                           </td>
                           <td className="py-3 px-4">
-                            <a href={toProxyStorageUrl(doc.url, typeof window !== 'undefined' ? window.location.origin : '') || doc.url} rel="noopener noreferrer" className="text-slate-700 hover:text-blue-600 font-medium flex items-center gap-2">
+                            <a 
+                              href={toProxyStorageUrl(doc.url, typeof window !== 'undefined' ? window.location.origin : '') || doc.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="text-slate-700 hover:text-blue-600 font-medium flex items-center gap-2"
+                            >
                               <LinkIcon className="w-4 h-4 text-slate-400" />
                               : ({doc.name})
                             </a>
@@ -1302,6 +1492,120 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
                 className="px-6 py-3 text-slate-600 font-bold hover:text-slate-800 transition-colors"
               >
                 Vazgeç
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hoca Stres Testi Uyarıları & Bilinçli Tercih Modalı */}
+      {isSaveConfirmModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border border-amber-200/80 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-5 border-b border-amber-100 flex items-center justify-between bg-amber-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amber-100 text-amber-700 rounded-xl flex items-center justify-center font-bold">
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">Stres Testi Uyarıları & Tercih Onayı</h3>
+                  <p className="text-xs text-amber-700 font-medium">Lütfen aşağıdaki tespitleri inceleyiniz</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsSaveConfirmModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Sistem raporda aşağıdaki durumları tespit etti. Eğer bu düzenlemeyi akademik gerekçelerle (örneğin aynı kanıtın iki farklı gerekçede bilerek kullanılması) yaptıysanız, onaylayarak işleme devam edebilirsiniz:
+              </p>
+
+              <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 max-h-60 overflow-y-auto">
+                <ul className="space-y-2 text-xs text-amber-900 list-disc list-inside">
+                  {saveWarningDetails.map((detail, idx) => (
+                    <li key={idx} className="font-semibold leading-relaxed">{detail}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="p-5 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-end gap-2.5">
+              <button 
+                onClick={() => setIsSaveConfirmModalOpen(false)}
+                disabled={isSaving}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-100 transition-colors"
+              >
+                Vazgeç ve Düzenle
+              </button>
+              <button 
+                onClick={executeSave}
+                disabled={isSaving}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors shadow-sm flex items-center justify-center gap-2"
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Bilinçli Olarak Böyle Ekledim, Onaya Gönder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Yönetici İnisiyatifi / İstisna Onayı Modalı */}
+      {isApproveConfirmModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border border-emerald-200/80 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-5 border-b border-emerald-100 flex items-center justify-between bg-emerald-50/40">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center font-bold">
+                  <ShieldAlert className="w-5 h-5 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">Yönetici / Koordinatör İstisna Onayı</h3>
+                  <p className="text-xs text-emerald-700 font-medium">Stres Testi Uyarı İncelemesi</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsApproveConfirmModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Bu raporda aşağıdaki stres testi uyarıları tespit edilmiştir. İncelediyseniz ve akademik/içerik gerekçeleriyle uygun görüyorsanız inisiyatifinizle onaylayabilirsiniz:
+              </p>
+
+              <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-4 max-h-60 overflow-y-auto">
+                <ul className="space-y-2 text-xs text-emerald-900 list-disc list-inside">
+                  {approveWarningDetails.map((detail, idx) => (
+                    <li key={idx} className="font-semibold leading-relaxed">{detail}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="p-5 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-end gap-2.5">
+              <button 
+                onClick={() => setIsApproveConfirmModalOpen(false)}
+                disabled={isActionSubmitting}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-100 transition-colors"
+              >
+                Vazgeç
+              </button>
+              <button 
+                onClick={() => executeApprove(pendingApproveRecord)}
+                disabled={isActionSubmitting}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors shadow-sm flex items-center justify-center gap-2"
+              >
+                {isActionSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Uyarıları İnceledim, İstisna Olarak Onayla
               </button>
             </div>
           </div>
