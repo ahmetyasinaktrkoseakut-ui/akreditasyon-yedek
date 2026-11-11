@@ -428,6 +428,32 @@ export function isEvidenceLinkedInHtml(html: string | null | undefined, evidence
 }
 
 /**
+ * Bölünmüş bağlantıdaki hedef href adresinin, ilgili kanıt numarasının (num)
+ * beklenen kanıt dosyası URL'siyle eşleşip eşleşmediğini doğrular.
+ */
+export function matchesExpectedEvidenceUrl(
+  num: number,
+  targetHref: string,
+  canonicalList: any[],
+  rawOdrKanitlar: any[]
+): boolean {
+  if (!targetHref || !num || isNaN(num)) return false;
+  const idx = num - 1;
+  const canonEv =
+    canonicalList.find(e => Number(e?.no) === num) ||
+    (idx >= 0 && idx < canonicalList.length ? canonicalList[idx] : null);
+  const odrTableEv =
+    rawOdrKanitlar.find((e: any) => Number(e?.no) === num) ||
+    (idx >= 0 && idx < rawOdrKanitlar.length ? rawOdrKanitlar[idx] : null);
+
+  if (!canonEv && !odrTableEv) return false;
+  const linkObj: HtmlEvidenceLink = { href: targetHref.trim() };
+  const canonMatch = canonEv ? doesAnchorMatchEvidence(linkObj, canonEv).matches : false;
+  const odrMatch = odrTableEv ? doesAnchorMatchEvidence(linkObj, odrTableEv).matches : false;
+  return canonMatch || odrMatch;
+}
+
+/**
  * Ölçüt bazlı PUKÖ - ÖDR Stres Testini çalıştırır.
  */
 export function calistirPukoStresTesti(params: {
@@ -485,13 +511,6 @@ export function calistirPukoStresTesti(params: {
     }
 
     // 2. Aşamalarda Kanıt Var, ÖDR'de Yok Kontrolü (PUKÖ aşamaları + odr.kanitlar)
-    const rawOdrIcerik = odr?.icerik || '';
-    const conflictingSplitsTr = extractConflictingSplitEvidenceTags(rawOdrIcerik);
-    const odrIcerik = healSplitEvidenceTags(rawOdrIcerik);
-    const odrIcerikWithoutLinks = normalizeHtmlForCitation(
-      odrIcerik.replace(/<a\b[^>]*href=["'][^"']+["'][^>]*>[\s\S]*?<\/a>/gi, ' ')
-    );
-
     // PUKÖ aşamalarını OzdegerlendirmeRaporuClient.tsx içindeki sırayla sırala:
     // Sıralama kuralı: planlama, uygulama, kontrol, onlem, olgunluk
     const orderMap: Record<string, number> = { planlama: 1, uygulama: 2, kontrol: 3, onlem: 4, olgunluk: 5 };
@@ -526,6 +545,17 @@ export function calistirPukoStresTesti(params: {
         });
       }
     });
+
+    const rawOdrKanitlar = Array.isArray(odr?.kanitlar) ? odr!.kanitlar : [];
+    const trUrlValidator = (num: number, targetHref: string) =>
+      matchesExpectedEvidenceUrl(num, targetHref, birlesikKanitlar, rawOdrKanitlar);
+
+    const rawOdrIcerik = odr?.icerik || '';
+    const conflictingSplitsTr = extractConflictingSplitEvidenceTags(rawOdrIcerik, trUrlValidator);
+    const odrIcerik = healSplitEvidenceTags(rawOdrIcerik, trUrlValidator);
+    const odrIcerikWithoutLinks = normalizeHtmlForCitation(
+      odrIcerik.replace(/<a\b[^>]*href=["'][^"']+["'][^>]*>[\s\S]*?<\/a>/gi, ' ')
+    );
 
     const allPukoEvidences: KanitDosyasi[] = [];
 
@@ -572,7 +602,6 @@ export function calistirPukoStresTesti(params: {
     });
 
     // ÖDR'nin kendi kanıt tablosundaki (odr.kanitlar) kanıtları Türkçe ÖDR metninde ayrı denetle
-    const rawOdrKanitlar = Array.isArray(odr?.kanitlar) ? odr!.kanitlar : [];
     rawOdrKanitlar.forEach((ok: any, idx: number) => {
       if (!ok) return;
       const rawUrl = (ok.url || ok.dosya_url || ok.storagePath || '').trim();
@@ -614,7 +643,7 @@ export function calistirPukoStresTesti(params: {
       }
     });
 
-    // Türkçe ÖDR'de bölünmüş 3 parçalı bağlantının href hedefleri çakışıyorsa raporla
+    // Türkçe ÖDR'de bölünmüş 3 parçalı bağlantının dış parçaları eşleşmiyorsa veya beklenen URL'yle uyuşmuyorsa raporla
     conflictingSplitsTr.forEach(conflict => {
       asamadaVarOdrdeYok.push({
         alt_olcut_id: olcut.id,
@@ -623,7 +652,10 @@ export function calistirPukoStresTesti(params: {
         puko_asamasi: 'odr_tablosu',
         kanit_adi: `${conflict.label} (Çakışan Bölünmüş Bağlantı)`,
         kanit_url: conflict.hrefs[0] || conflict.label,
-        durum_aciklamasi: `Türkçe ÖDR metninde bölünmüş ${conflict.label} bağlantısının parçaları farklı dosya adreslerine gitmektedir.`,
+        durum_aciklamasi:
+          conflict.reason === 'expected_url_mismatch'
+            ? `Türkçe ÖDR metninde bölünmüş ${conflict.label} bağlantısının adresi hedef kanıtın beklenen URL'siyle eşleşmemektedir.`
+            : `Türkçe ÖDR metninde bölünmüş ${conflict.label} bağlantısının dış parçaları farklı dosya adreslerine gitmektedir.`,
       });
     });
 
@@ -901,11 +933,6 @@ export function denetleIngilizceOdr(params: {
   }
 
   // 2. Kontrol: İngilizce metindeki kanıt atıflarını ([Evidence N] veya [Kanıt N]) ve odr.kanitlar listesini denetle
-  const rawHtmlEn = icerikEn || '';
-  const conflictingSplitsEn = extractConflictingSplitEvidenceTags(rawHtmlEn);
-  const htmlEn = healSplitEvidenceTags(rawHtmlEn);
-  const htmlTrHealed = healSplitEvidenceTags(icerikTr || '');
-  
   // PUKÖ aşamalarını OzdegerlendirmeRaporuClient.tsx içindeki sırayla sırala ve kanonik kanıt listesini oluştur
   const canonicalEvidenceList: any[] = [];
   let localEvidenceCounter = 1;
@@ -956,6 +983,14 @@ export function denetleIngilizceOdr(params: {
       canonicalEvidenceList.push(ev);
     }
   });
+
+  const enUrlValidator = (num: number, targetHref: string) =>
+    matchesExpectedEvidenceUrl(num, targetHref, canonicalEvidenceList, rawOdrKanitlar);
+
+  const rawHtmlEn = icerikEn || '';
+  const conflictingSplitsEn = extractConflictingSplitEvidenceTags(rawHtmlEn, enUrlValidator);
+  const htmlEn = healSplitEvidenceTags(rawHtmlEn, enUrlValidator);
+  const htmlTrHealed = healSplitEvidenceTags(icerikTr || '', enUrlValidator);
 
   // Türkçe ÖDR metninde geçen kanıt numaralarını etiketlerden arındırılmış metin üzerinden dinamik olarak tespit et
   const trNormalized = normalizeHtmlForCitation(htmlTrHealed);
@@ -1071,10 +1106,14 @@ export function denetleIngilizceOdr(params: {
   const missingEvidenceLabels: string[] = [];
   const missingFlaggedNums = new Set<number>();
 
-  // Bölünmüş 3 parçalı bağlantıda href çakışması varsa raporla
+  // Bölünmüş 3 parçalı bağlantıda dış parçalar uyuşmuyorsa veya beklenen URL ile eşleşmiyorsa raporla
   conflictingSplitsEn.forEach(conflict => {
     missingFlaggedNums.add(conflict.num);
-    missingEvidenceLabels.push(`${conflict.label} (Bölünmüş bağlantı parçaları farklı dosya adreslerine gidiyor)`);
+    if (conflict.reason === 'expected_url_mismatch') {
+      missingEvidenceLabels.push(`${conflict.label} (Bölünmüş bağlantı adresi hedef kanıtın beklenen URL'siyle eşleşmiyor)`);
+    } else {
+      missingEvidenceLabels.push(`${conflict.label} (Bölünmüş bağlantı dış parçaları farklı dosya adreslerine gidiyor)`);
+    }
   });
 
   enFrequencies.forEach((_, evNum) => {
@@ -1159,9 +1198,6 @@ export function degerlendirTekOdr(params: {
   kanitlar: any[] | null | undefined;
   pukoStages?: PukoKayit[] | null;
 }): TekOdrDegerlendirmeSonucu {
-  const rawHtmlTr = params.icerikTr || '';
-  const conflictingSplitsTr = extractConflictingSplitEvidenceTags(rawHtmlTr);
-  const htmlTr = healSplitEvidenceTags(rawHtmlTr);
   const pukoStages = Array.isArray(params.pukoStages) ? params.pukoStages : [];
 
   const orderMap: Record<string, number> = { planlama: 1, uygulama: 2, kontrol: 3, onlem: 4, iyilestirme: 4, olgunluk: 5 };
@@ -1194,6 +1230,14 @@ export function degerlendirTekOdr(params: {
       });
     }
   });
+
+  const rawOdrKanitlar = Array.isArray(params.kanitlar) ? params.kanitlar : [];
+  const trUrlValidator = (num: number, targetHref: string) =>
+    matchesExpectedEvidenceUrl(num, targetHref, canonicalList, rawOdrKanitlar);
+
+  const rawHtmlTr = params.icerikTr || '';
+  const conflictingSplitsTr = extractConflictingSplitEvidenceTags(rawHtmlTr, trUrlValidator);
+  const htmlTr = healSplitEvidenceTags(rawHtmlTr, trUrlValidator);
 
   const uncitedTrEvidences: Array<{ kanit_no?: number | string; dosya_adi: string; asama: string; url?: string }> = [];
 
@@ -1229,7 +1273,6 @@ export function degerlendirTekOdr(params: {
   });
 
   // 2. ÖDR kanıt tablosundaki (odr.kanitlar) kanıtları Türkçe ÖDR metninde ayrı kontrol et
-  const rawOdrKanitlar = Array.isArray(params.kanitlar) ? params.kanitlar : [];
   rawOdrKanitlar.forEach((ok: any, idx: number) => {
     if (!ok) return;
     const okUrl = (ok.url || ok.dosya_url || ok.storagePath || '').trim();

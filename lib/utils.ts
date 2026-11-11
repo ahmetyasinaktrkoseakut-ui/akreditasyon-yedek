@@ -166,32 +166,49 @@ export function normalizeSplitHrefTarget(rawHref?: string | null): string {
   return `url:${str}`;
 }
 
-export function areSplitHrefsSameTarget(u1?: string | null, _u2?: string | null, u3?: string | null): boolean {
+export type SplitEvidenceUrlValidator = (num: number, targetHref: string) => boolean;
+
+export function areSplitHrefsSameTarget(
+  u1?: string | null,
+  _u2?: string | null,
+  u3?: string | null,
+  num?: number,
+  expectedUrlValidator?: SplitEvidenceUrlValidator
+): boolean {
   const t1 = normalizeSplitHrefTarget(u1);
   const t3 = normalizeSplitHrefTarget(u3);
-  return Boolean(t1 && t1 === t3);
+  if (!t1 || t1 !== t3) return false;
+  if (expectedUrlValidator && typeof num === 'number' && !isNaN(num)) {
+    return expectedUrlValidator(num, u1 || '');
+  }
+  return true;
 }
 
 export interface ConflictingSplitEvidenceLink {
   num: number;
   label: string;
   hrefs: [string, string, string];
+  reason: 'outer_mismatch' | 'expected_url_mismatch';
 }
 
 /**
- * Bölünmüş 3 parçalı ([ + Evidence/Kanıt + N]) bağlantılar arasında href hedefleri birbiriyle
- * uyuşmayan (veya geçersiz/boş olan) çakışmalı bağlantıları tespit eder.
+ * Bölünmüş 3 parçalı ([ + Evidence/Kanıt + N]) bağlantılar arasında dış parçaların (u1 ve u3)
+ * hedefleri birbiriyle uyuşmayan veya kanıtın beklenen URL'siyle eşleşmeyen bağlantıları tespit eder.
  */
-export function extractConflictingSplitEvidenceTags(html: string | null | undefined): ConflictingSplitEvidenceLink[] {
+export function extractConflictingSplitEvidenceTags(
+  html: string | null | undefined,
+  expectedUrlValidator?: SplitEvidenceUrlValidator
+): ConflictingSplitEvidenceLink[] {
   if (!html) return [];
   const conflicts: ConflictingSplitEvidenceLink[] = [];
   const regex = new RegExp(SPLIT_EVIDENCE_TAG_REGEX.source, 'gi');
   let match: RegExpExecArray | null;
   while ((match = regex.exec(html)) !== null) {
     const [, u1, u2, word, u3, numPart] = match;
-    if (!areSplitHrefsSameTarget(u1, u2, u3)) {
-      const cleanNumStr = numPart.replace(/^[t\s]+/, '').replace(/\]$/, '').trim();
-      const num = parseInt(cleanNumStr, 10);
+    const cleanNumStr = numPart.replace(/^[t\s]+/, '').replace(/\]$/, '').trim();
+    const num = parseInt(cleanNumStr, 10);
+    if (!areSplitHrefsSameTarget(u1, u2, u3, num, expectedUrlValidator)) {
+      const outerMatch = areSplitHrefsSameTarget(u1, u2, u3);
       const properWord = word.toLowerCase().includes('edivence')
         ? 'Evidence'
         : /^kan/i.test(word)
@@ -202,6 +219,7 @@ export function extractConflictingSplitEvidenceTags(html: string | null | undefi
           num,
           label: `[${properWord} ${num}]`,
           hrefs: [u1 || '', u2 || '', u3 || ''],
+          reason: outerMatch ? 'expected_url_mismatch' : 'outer_mismatch',
         });
       }
     }
@@ -209,15 +227,19 @@ export function extractConflictingSplitEvidenceTags(html: string | null | undefi
   return conflicts;
 }
 
-export function healSplitEvidenceTags(html: string): string {
+export function healSplitEvidenceTags(
+  html: string,
+  expectedUrlValidator?: SplitEvidenceUrlValidator
+): string {
   if (!html) return html;
   return html.replace(
     SPLIT_EVIDENCE_TAG_REGEX,
     (match, u1, u2, word, u3, numPart) => {
-      if (!areSplitHrefsSameTarget(u1, u2, u3)) {
+      const cleanNum = numPart.replace(/^[t\s]+/, '').replace(/\]$/, '').trim();
+      const num = parseInt(cleanNum, 10);
+      if (!areSplitHrefsSameTarget(u1, u2, u3, num, expectedUrlValidator)) {
         return match;
       }
-      const cleanNum = numPart.replace(/^[t\s]+/, '').replace(/\]$/, '').trim();
       const properWord = word.toLowerCase().includes('edivence')
         ? 'Evidence'
         : /^kan/i.test(word)
