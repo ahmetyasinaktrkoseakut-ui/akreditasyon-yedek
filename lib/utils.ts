@@ -121,13 +121,108 @@ export function toProxyStorageUrl(url: string, origin: string): string {
   return trimmed;
 }
 
+const SPLIT_EVIDENCE_TAG_REGEX =
+  /<a\s+[^>]*href=["']([^"']*)["'][^>]*>\s*(?:<(?:strong|b|u)\b[^>]*>\s*)*\[\s*(?:<\/(?:strong|b|u)>\s*)*<\/a>\s*<a\s+[^>]*href=["']([^"']*)["'][^>]*>\s*(?:<(?:strong|b|u)\b[^>]*>\s*)*(Evidence|Kan[ıi]t|edivence)\s*(?:<\/(?:strong|b|u)>\s*)*<\/a>\s*<a\s+[^>]*href=["']([^"']*)["'][^>]*>\s*(?:<(?:strong|b|u)\b[^>]*>\s*)*([t\s]*\d+\])\s*(?:<\/(?:strong|b|u)>\s*)*<\/a>/gi;
+
+/**
+ * Bir bağlantı adresini (Supabase storage veya proxy storage) karşılaştırma için kanonik hedefe dönüştürür.
+ * Boş veya '#' olan adresler geçersiz sayılır ve '' döndürür.
+ */
+export function normalizeSplitHrefTarget(rawHref?: string | null): string {
+  if (!rawHref) return '';
+  let str = rawHref.trim();
+  if (!str || str === '#') return '';
+
+  str = str.split('#')[0].split('?')[0].trim();
+  try {
+    str = decodeURIComponent(str);
+  } catch {}
+
+  const supabaseIdx = str.indexOf('/storage/v1/object/');
+  if (supabaseIdx !== -1) {
+    const after = str.substring(supabaseIdx + '/storage/v1/object/'.length);
+    const cleaned = after.replace(/^(public|authenticated|sign)\//i, '').replace(/^\/+/, '');
+    const slashIdx = cleaned.indexOf('/');
+    if (slashIdx !== -1) {
+      const bucket = cleaned.substring(0, slashIdx).trim();
+      const path = cleaned.substring(slashIdx + 1).replace(/^\/+/, '').trim();
+      if (bucket && path) return `storage:${bucket}/${path}`;
+    }
+    return '';
+  }
+
+  const proxyIdx = str.indexOf('/api/storage/');
+  if (proxyIdx !== -1) {
+    const after = str.substring(proxyIdx + '/api/storage/'.length).replace(/^\/+/, '');
+    const slashIdx = after.indexOf('/');
+    if (slashIdx !== -1) {
+      const bucket = after.substring(0, slashIdx).trim();
+      const path = after.substring(slashIdx + 1).replace(/^\/+/, '').trim();
+      if (bucket && path) return `storage:${bucket}/${path}`;
+    }
+    return '';
+  }
+
+  return `url:${str}`;
+}
+
+export function areSplitHrefsSameTarget(u1?: string | null, _u2?: string | null, u3?: string | null): boolean {
+  const t1 = normalizeSplitHrefTarget(u1);
+  const t3 = normalizeSplitHrefTarget(u3);
+  return Boolean(t1 && t1 === t3);
+}
+
+export interface ConflictingSplitEvidenceLink {
+  num: number;
+  label: string;
+  hrefs: [string, string, string];
+}
+
+/**
+ * Bölünmüş 3 parçalı ([ + Evidence/Kanıt + N]) bağlantılar arasında href hedefleri birbiriyle
+ * uyuşmayan (veya geçersiz/boş olan) çakışmalı bağlantıları tespit eder.
+ */
+export function extractConflictingSplitEvidenceTags(html: string | null | undefined): ConflictingSplitEvidenceLink[] {
+  if (!html) return [];
+  const conflicts: ConflictingSplitEvidenceLink[] = [];
+  const regex = new RegExp(SPLIT_EVIDENCE_TAG_REGEX.source, 'gi');
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(html)) !== null) {
+    const [, u1, u2, word, u3, numPart] = match;
+    if (!areSplitHrefsSameTarget(u1, u2, u3)) {
+      const cleanNumStr = numPart.replace(/^[t\s]+/, '').replace(/\]$/, '').trim();
+      const num = parseInt(cleanNumStr, 10);
+      const properWord = word.toLowerCase().includes('edivence')
+        ? 'Evidence'
+        : /^kan/i.test(word)
+        ? 'Kanıt'
+        : 'Evidence';
+      if (!isNaN(num)) {
+        conflicts.push({
+          num,
+          label: `[${properWord} ${num}]`,
+          hrefs: [u1 || '', u2 || '', u3 || ''],
+        });
+      }
+    }
+  }
+  return conflicts;
+}
+
 export function healSplitEvidenceTags(html: string): string {
   if (!html) return html;
   return html.replace(
-    /<a\s+[^>]*href=["']([^"']*)["'][^>]*>\s*(?:<strong>|<b>)?\s*(?:<u>)?\s*\[\s*(?:<\/u>)?\s*(?:<\/b>|<\/strong>)?\s*<\/a>\s*<a\s+[^>]*href=["']([^"']*)["'][^>]*>\s*(?:<strong>|<b>)?\s*(?:<u>)?\s*(Evidence|Kanıt|edivence)\s*(?:<\/u>)?\s*(?:<\/b>|<\/strong>)?\s*<\/a>\s*<a\s+[^>]*href=["']([^"']*)["'][^>]*>\s*(?:<strong>|<b>)?\s*(?:<u>)?\s*([t\s]*\d+\])\s*(?:<\/u>)?\s*(?:<\/b>|<\/strong>)?\s*<\/a>/gi,
+    SPLIT_EVIDENCE_TAG_REGEX,
     (match, u1, u2, word, u3, numPart) => {
+      if (!areSplitHrefsSameTarget(u1, u2, u3)) {
+        return match;
+      }
       const cleanNum = numPart.replace(/^[t\s]+/, '').replace(/\]$/, '').trim();
-      const properWord = word.toLowerCase().includes('edivence') ? 'Evidence' : word;
+      const properWord = word.toLowerCase().includes('edivence')
+        ? 'Evidence'
+        : /^kan/i.test(word)
+        ? 'Kanıt'
+        : word;
       return `<a rel="noopener noreferrer" href="${u1}"><strong><u>[${properWord} ${cleanNum}]</u></strong></a>`;
     }
   );

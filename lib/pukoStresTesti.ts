@@ -7,6 +7,8 @@
  * 3. Boş Aşamalar: Seçili dönemde ölçütün PUKÖ aşamasında kayıt bulunmayan veya açıklaması boş ve kanıtı olmayan aşamalar.
  */
 
+import { healSplitEvidenceTags, extractConflictingSplitEvidenceTags } from './utils';
+
 export const PUKO_ASAMALARI = ['planlama', 'uygulama', 'kontrol', 'onlem', 'olgunluk'] as const;
 export type PukoAsamasi = typeof PUKO_ASAMALARI[number];
 
@@ -17,6 +19,7 @@ export const ASAMA_ISIMLERI: Record<string, string> = {
   uygulama: 'Uygulama',
   kontrol: 'Kontrol Etme',
   onlem: 'Önlem Alma',
+  odr_tablosu: 'ÖDR Kanıt Tablosu',
 };
 
 export interface KanitDosyasi {
@@ -481,17 +484,13 @@ export function calistirPukoStresTesti(params: {
       });
     }
 
-    // 2. Aşamalarda Kanıt Var, ÖDR'de Yok Kontrolü
-    const odrIcerik = odr?.icerik || '';
-    const cleanNormalizedTr = normalizeHtmlForCitation(odrIcerik);
-    const allStageEvidences: KanitDosyasi[] = [];
-    pukoStages.forEach(p => {
-      if (p.kanit_dosyalari && Array.isArray(p.kanit_dosyalari)) {
-        p.kanit_dosyalari.forEach(k => {
-          if (k) allStageEvidences.push(k);
-        });
-      }
-    });
+    // 2. Aşamalarda Kanıt Var, ÖDR'de Yok Kontrolü (PUKÖ aşamaları + odr.kanitlar)
+    const rawOdrIcerik = odr?.icerik || '';
+    const conflictingSplitsTr = extractConflictingSplitEvidenceTags(rawOdrIcerik);
+    const odrIcerik = healSplitEvidenceTags(rawOdrIcerik);
+    const odrIcerikWithoutLinks = normalizeHtmlForCitation(
+      odrIcerik.replace(/<a\b[^>]*href=["'][^"']+["'][^>]*>[\s\S]*?<\/a>/gi, ' ')
+    );
 
     // PUKÖ aşamalarını OzdegerlendirmeRaporuClient.tsx içindeki sırayla sırala:
     // Sıralama kuralı: planlama, uygulama, kontrol, onlem, olgunluk
@@ -501,7 +500,7 @@ export function calistirPukoStresTesti(params: {
     );
 
     // Tek bir global sayaç ve ÖDR ekranıyla birebir aynı tekilleştirme kuralı:
-    // URL mevcutsa eşleştir, URL'siz nesneleri tekilleştirme
+    // URL mevcutsa urlsMatch ile eşleştir, URL'siz nesneleri tekilleştirme (dosya adı benzerliğiyle tekilleştirme YAPILMAZ)
     let localEvidenceCounter = 1;
     const birlesikKanitlar: any[] = [];
     const pukoKanitKanonikMap = new Map<KanitDosyasi, number>();
@@ -510,7 +509,15 @@ export function calistirPukoStresTesti(params: {
       if (p.kanit_dosyalari && Array.isArray(p.kanit_dosyalari)) {
         p.kanit_dosyalari.forEach((k: any) => {
           if (!k) return;
-          let ev = k.url ? birlesikKanitlar.find(e => Boolean(e.url) && e.url === k.url) : null;
+          const kUrl = (k.url || k.dosya_url || k.storagePath || '').trim();
+          const kRef = parseStorageReference(kUrl);
+          const kBucket = (k.bucket || kRef?.bucket || 'dokumanlar').trim();
+          let ev = kUrl
+            ? birlesikKanitlar.find(e => {
+                const eUrl = (e.url || e.dosya_url || e.storagePath || '').trim();
+                return Boolean(eUrl && urlsMatch(eUrl, kUrl, kBucket));
+              })
+            : null;
           if (!ev) {
             ev = { ...k, no: localEvidenceCounter++ };
             birlesikKanitlar.push(ev);
@@ -520,40 +527,35 @@ export function calistirPukoStresTesti(params: {
       }
     });
 
+    const allPukoEvidences: KanitDosyasi[] = [];
+
     siraliPukoStages.forEach(p => {
       if (p.kanit_dosyalari && Array.isArray(p.kanit_dosyalari)) {
         p.kanit_dosyalari.forEach(k => {
+          if (!k) return;
+          allPukoEvidences.push(k);
           const rawUrl = (k.url || k.dosya_url || k.storagePath || '').trim();
           const cleanName = (k.name || k.dosya_adi || '').trim();
           if (!rawUrl && !cleanName) return;
 
-          // Kanonik global kanıt numarası (k.no veya k.evidence_no önüne GEÇİRİLMEZ):
+          // Kanonik global kanıt numarası:
           const evNum = pukoKanitKanonikMap.get(k) ?? k.no ?? k.evidence_no;
 
-          // 1. Tıklanabilir <a> bağlantısı kontrolü
-          const hasAnchorLink =
-            isEvidenceLinkedInHtml(odrIcerik, k) ||
-            (Boolean(cleanName) &&
-              allStageEvidences.some(
-                otherK =>
-                  otherK !== k &&
-                  (otherK.name || otherK.dosya_adi || '').trim() === cleanName &&
-                  isEvidenceLinkedInHtml(odrIcerik, otherK)
-              ));
+          // Yalnızca geçerli tıklanabilir <a> bağlantısı ve doğru dosya URL'si/ID'si şarttır.
+          // Dosya adı benzerliği veya düz metin atfı geçerli bağlantı sayılmaz.
+          const hasAnchorLink = isEvidenceLinkedInHtml(odrIcerik, k);
 
-          // 2. Düz metin atfı kontrolü (örneğin: "[Kanıt 1]", "Kanıt 1: Karar", "Kanıt 1 olarak eklenmiştir", veya açık dosya adı)
-          const hasPlainTextCitation =
-            Boolean(evNum && new RegExp(`\\bKan[ıi]t\\s*${evNum}\\b`, 'i').test(cleanNormalizedTr)) ||
-            (Boolean(cleanName) && cleanNormalizedTr.toLowerCase().includes(cleanName.toLowerCase()));
-
-          const inOdrHtml = hasAnchorLink || hasPlainTextCitation;
-
-          if (!inOdrHtml) {
+          if (!hasAnchorLink) {
+            const hasPlainTextOnly = Boolean(
+              evNum && new RegExp(`\\b(?:Kan[ıi]t|Evidence)\\s*${evNum}\\b`, 'i').test(odrIcerikWithoutLinks)
+            );
             const stageDescEmpty = isHtmlContentEmpty(p.aciklama);
             const asamaAdi = ASAMA_ISIMLERI[p.puko_asamasi] || p.puko_asamasi;
-            const durumAciklamasi = stageDescEmpty
+            const durumAciklamasi = hasPlainTextOnly
+              ? `Metinde [Kanıt ${evNum}] düz yazı olarak geçmektedir ancak geçerli ve tıklanabilir dosya bağlantısı bulunmamaktadır.`
+              : stageDescEmpty
               ? `${asamaAdi} aşamasında açıklama girilmediği için kanıt ÖDR metnine otomatik aktarılamamıştır. Tablodaki '+ TR' / '+ EN' butonunu kullanarak kanıtı metne ekleyin.`
-              : `PUKÖ aşamasında yüklenen bu kanıt ÖDR metninde yer almamaktadır. Tablodaki '+ TR' butonuna basarak metne ekleyin veya yukarıdaki 'Verileri Yeniden Çek' butonunu kullanın.`;
+              : `PUKÖ aşamasında yüklenen bu kanıt ÖDR metninde geçerli bir bağlantıyla yer almamaktadır. Tablodaki '+ TR' butonuna basarak metne ekleyin veya yukarıdaki 'Verileri Yeniden Çek' butonunu kullanın.`;
 
             asamadaVarOdrdeYok.push({
               alt_olcut_id: olcut.id,
@@ -567,6 +569,62 @@ export function calistirPukoStresTesti(params: {
           }
         });
       }
+    });
+
+    // ÖDR'nin kendi kanıt tablosundaki (odr.kanitlar) kanıtları Türkçe ÖDR metninde ayrı denetle
+    const rawOdrKanitlar = Array.isArray(odr?.kanitlar) ? odr!.kanitlar : [];
+    rawOdrKanitlar.forEach((ok: any, idx: number) => {
+      if (!ok) return;
+      const rawUrl = (ok.url || ok.dosya_url || ok.storagePath || '').trim();
+      const cleanName = (ok.name || ok.dosya_adi || '').trim();
+      if (!rawUrl && !cleanName) return;
+
+      const okRef = parseStorageReference(rawUrl);
+      const okBucket = (ok.bucket || okRef?.bucket || 'dokumanlar').trim();
+      const evNum = typeof ok.no === 'number' ? ok.no : idx + 1;
+
+      // Eğer aynı URL'ye sahip kanıt zaten PUKÖ aşamalarında mevcutsa yukarıda denetlenmiştir; mükerrer ekleme yapma
+      const alreadyCheckedInPuko = Boolean(
+        rawUrl &&
+          allPukoEvidences.some(pk => {
+            const pkUrl = (pk.url || pk.dosya_url || pk.storagePath || '').trim();
+            return Boolean(pkUrl && urlsMatch(rawUrl, pkUrl, okBucket));
+          })
+      );
+      if (alreadyCheckedInPuko) return;
+
+      const hasAnchorLink = isEvidenceLinkedInHtml(odrIcerik, ok);
+      if (!hasAnchorLink) {
+        const hasPlainTextOnly = Boolean(
+          evNum && new RegExp(`\\b(?:Kan[ıi]t|Evidence)\\s*${evNum}\\b`, 'i').test(odrIcerikWithoutLinks)
+        );
+        const durumAciklamasi = hasPlainTextOnly
+          ? `ÖDR kanıt tablosundaki [Kanıt ${evNum}] Türkçe ÖDR metninde yalnızca düz yazı olarak geçmektedir; tıklanabilir bağlantısı yoktur.`
+          : `ÖDR kanıt tablosunda yer alan [Kanıt ${evNum}] (${cleanName || 'Kanıt Dosyası'}) Türkçe ÖDR metninde yer almamaktadır. Tablodaki '+ TR' butonunu kullanarak metne ekleyin.`;
+
+        asamadaVarOdrdeYok.push({
+          alt_olcut_id: olcut.id,
+          kod: olcut.kod,
+          olcut_adi: olcut.olcut_adi,
+          puko_asamasi: ok.puko_asamasi || 'odr_tablosu',
+          kanit_adi: cleanName || rawUrl.split('/').pop() || `Kanıt ${evNum}`,
+          kanit_url: rawUrl,
+          durum_aciklamasi: durumAciklamasi,
+        });
+      }
+    });
+
+    // Türkçe ÖDR'de bölünmüş 3 parçalı bağlantının href hedefleri çakışıyorsa raporla
+    conflictingSplitsTr.forEach(conflict => {
+      asamadaVarOdrdeYok.push({
+        alt_olcut_id: olcut.id,
+        kod: olcut.kod,
+        olcut_adi: olcut.olcut_adi,
+        puko_asamasi: 'odr_tablosu',
+        kanit_adi: `${conflict.label} (Çakışan Bölünmüş Bağlantı)`,
+        kanit_url: conflict.hrefs[0] || conflict.label,
+        durum_aciklamasi: `Türkçe ÖDR metninde bölünmüş ${conflict.label} bağlantısının parçaları farklı dosya adreslerine gitmektedir.`,
+      });
     });
 
     // 3. İngilizce ÖDR Kontrolleri (Ölçütün ÖDR kaydı mevcutsa)
@@ -642,11 +700,108 @@ export function degerlendirTekAsama(params: {
   };
 }
 
+const EN_PROPER_NOUN_PHRASES = [
+  'Eskişehir Osmangazi Üniversitesi',
+  'Eskişehir Osmangazi',
+  'Diyanet İşleri Türk İslam Birliği',
+  'Diyanet İşleri Başkanlığı',
+  'İlahiyat Akreditasyon Ajansı',
+  'Eskişehir İslami İlimler Vakfı',
+  'Etkili Öğretim Uygulamaları ve İyi Örnekler',
+  'Yükseköğretim Kalite Kurulu',
+  'Yükseköğretim Kurulu',
+  'Hacı Bektaş',
+  'Yıldırım Beyazıt',
+  'Genç TDV',
+  'ÖZLÜK\\.ESOGU',
+  '_DERS İZLENCE\\.pdf',
+  'KANIT_İŞ YÜKÜ\\.pdf',
+];
+
+const EN_PROPER_NOUN_TOKENS = [
+  'Eskişehir', 'ESKİŞEHİR', 'Osmangazi', 'OSMANGAZİ', 'ESOGÜ', 'ESOGU',
+  'Türkiye', 'TÜRKIYE', 'TÜRKİYE', 'Kütahya', 'Odunpazarı',
+  'TÜBİTAK', 'YÖKAK', 'YÖK', 'YÖKSİS', 'AVESİS', 'ÖSYM', 'TYYÇ', 'İAA', 'DİB', 'DİTİB',
+  'DİA', 'ESİLDER', 'UİP', 'ÖABT', 'ÜNİDES', 'İHHK', 'ÖZLÜK', 'AKTS', 'KPSS', 'ALES', 'YDS', 'YÖKDİL',
+  'Gül', 'Aybiçe', 'İlhan', 'Baş', 'Yıldırım', 'Beyazıt', 'Özalp', 'İsmail', 'Perktaş',
+  'METİN', 'Ayşe', 'İshak', 'TEKİN', 'Yılmaz', 'Nilüfer', 'İrem', 'Yıldız', 'Kübra',
+  'Sağlam', 'Keleş', 'Öztoprak', 'Arı', 'Sarıtaş', 'Bektaş', 'Öncü', 'Tanı', 'Genç',
+];
+
+const TR_DICTIONARY_WORDS = [
+  've', 'veya', 'ile', 'için', 'icin', 'gibi', 'göre', 'gore', 'üzere', 'uzere',
+  'ancak', 'fakat', 'çünkü', 'cunku', 'ayrıca', 'ayrica', 'olarak', 'olan',
+  'tüm', 'tum', 'bütün', 'butun', 'diğer', 'diger', 'bazı', 'bazi', 'ilgili',
+  'kapsamında', 'kapsaminda', 'doğrultusunda', 'dogrultusunda', 'yönelik', 'yonelik',
+  'hakkında', 'hakkinda', 'ilişkin', 'iliskin', 'tarafından', 'tarafindan',
+  'yapılan', 'yapilan', 'yapılmış', 'yapilmis', 'yapılmıştır', 'yapilmistir',
+  'yapılmaktadır', 'yapilmaktadir', 'bulunan', 'bulunmaktadır', 'bulunmaktadir',
+  'edilen', 'edilmiştir', 'edilmistir', 'edilmektedir', 'sağlanan', 'saglanan',
+  'sağlanmıştır', 'saglanmistir', 'sağlanmaktadır', 'saglanmaktadir',
+  'alınan', 'alinan', 'alınmıştır', 'alinmistir', 'verilen', 'verilmiştir', 'verilmistir',
+  'planlama', 'uygulama', 'önlem', 'onlem', 'iyileştirme', 'iyilestirme', 'olgunluk',
+  'aşama', 'asama', 'aşaması', 'asamasi', 'ölçüt', 'olcut', 'özdeğerlendirme', 'ozdegerlendirme',
+  'fakülte', 'fakulte', 'fakültesi', 'fakultesi', 'bölüm', 'bolum', 'bölümü', 'bolumu',
+  'öğrenci', 'ogrenci', 'öğrenciler', 'ogrenciler', 'öğretim', 'ogretim', 'eğitim', 'egitim',
+  'araştırma', 'arastirma', 'geliştirme', 'gelistirme', 'toplumsal', 'katkı', 'katki',
+  'yönetim', 'yonetim', 'komisyon', 'komisyonu', 'kurul', 'kurulu', 'toplantı', 'toplanti',
+  'karar', 'kararı', 'karari', 'anket', 'anketi', 'sonuç', 'sonuc', 'sonuçları', 'sonuclari',
+  'rapor', 'raporu', 'duyuru', 'duyurusu', 'yönerge', 'yonerge', 'yönetmelik', 'yonetmelik',
+  'müfredat', 'mufredat', 'değerlendirme', 'degerlendirme', 'izleme', 'paydaş', 'paydas',
+  'kanıt', 'kanit',
+];
+
+/**
+ * İngilizce ÖDR metninde [Kanıt N] / [Evidence N] etiketleri ve kurumsal/özel isim whitelist'i
+ * (çevre metni kapsamadan tam sözcük sınırlarıyla) ayıklandıktan sonra kalan Türkçe kelimeleri tespit eder.
+ */
+export function detectTurkishWordsInEnglishOdr(htmlEn: string | null | undefined): string[] {
+  if (!htmlEn) return [];
+  let text = healSplitEvidenceTags(htmlEn)
+    .replace(/\[\s*(?:Kan[ıi]t|Evidence|edivence)\s*[t\s]*\d+\s*\]/gi, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/\/api\/storage\/\S+/gi, ' ')
+    .replace(/\S+@\S+\.\S+/g, ' ');
+
+  for (const phrase of EN_PROPER_NOUN_PHRASES) {
+    const pattern = phrase.replace(/\s+/g, '\\s+');
+    const rx = new RegExp(`(?<![\\p{L}\\p{N}_])${pattern}(?![\\p{L}\\p{N}_])`, 'giu');
+    text = text.replace(rx, ' ');
+  }
+
+  for (const token of EN_PROPER_NOUN_TOKENS) {
+    const rx = new RegExp(`(?<![\\p{L}\\p{N}_])${token}(?![\\p{L}\\p{N}_])`, 'giu');
+    text = text.replace(rx, ' ');
+  }
+
+  const found = new Set<string>();
+
+  // 1. Türkçe özel karakter içeren kelimeler
+  const trCharMatches = text.match(/[\p{L}]*[çğıöşüÇĞİÖŞÜ][\p{L}]*/gu) || [];
+  for (const w of trCharMatches) {
+    found.add(w);
+  }
+
+  // 2. Tam sözcük sınırıyla eşleşen Türkçe sözlük kelimeleri
+  const dictRx = new RegExp(`(?<![\\p{L}\\p{N}_])(${TR_DICTIONARY_WORDS.join('|')})(?![\\p{L}\\p{N}_])`, 'giu');
+  let m: RegExpExecArray | null;
+  while ((m = dictRx.exec(text)) !== null) {
+    found.add(m[1]);
+  }
+
+  return Array.from(found);
+}
+
 /**
  * İngilizce ÖDR içeriğini denetler:
- * 1. İngilizce içerik boşsa veya Türkçe metinle aynıysa tespit eder.
- * 2. [Evidence N] bağlantısı yalnızca herhangi bir kanıta değil, kanitlar listesindeki N'inci kanıta (1-based: N-1) bağlanmalı;
- *    bağlantının URL'si de o kaydın URL'siyle eşleşmeli.
+ * 1. İngilizce içerik boşsa, Türkçe metinle aynıysa veya çevrilmemiş Türkçe kelime içeriyorsa tespit eder.
+ * 2. [Evidence N] / [Kanıt N] bağlantısı yalnızca herhangi bir kanıta değil, hedef kanıta bağlanmalı;
+ *    düz yazı kalan, yanlış hedefe giden veya odr.kanitlar'da olup bağlantısız kalan kanıtları raporlar.
  */
 export function denetleIngilizceOdr(params: {
   altOlcutId: number | string;
@@ -732,8 +887,24 @@ export function denetleIngilizceOdr(params: {
     return issues;
   }
 
-  // 2. Kontrol: İngilizce metindeki kanıt atıflarını ([Evidence N] veya [Kanıt N]) denetle
-  const htmlEn = icerikEn || '';
+  // Durum C: İngilizce ÖDR içinde tek bir Türkçe kelime dahi bırakılmışsa tespit et
+  const detectedTrWords = detectTurkishWordsInEnglishOdr(icerikEn);
+  if (detectedTrWords.length > 0) {
+    const sampleWords = detectedTrWords.slice(0, 5).join(', ');
+    issues.push({
+      alt_olcut_id: altOlcutId,
+      kod,
+      olcut_adi: olcutAdi,
+      sorun_tipi: 'bos_veya_kopyalanmis',
+      aciklama: `İngilizce ÖDR metninde çevrilmemiş Türkçe ifadeler tespit edildi (${sampleWords}${detectedTrWords.length > 5 ? '...' : ''}).`,
+    });
+  }
+
+  // 2. Kontrol: İngilizce metindeki kanıt atıflarını ([Evidence N] veya [Kanıt N]) ve odr.kanitlar listesini denetle
+  const rawHtmlEn = icerikEn || '';
+  const conflictingSplitsEn = extractConflictingSplitEvidenceTags(rawHtmlEn);
+  const htmlEn = healSplitEvidenceTags(rawHtmlEn);
+  const htmlTrHealed = healSplitEvidenceTags(icerikTr || '');
   
   // PUKÖ aşamalarını OzdegerlendirmeRaporuClient.tsx içindeki sırayla sırala ve kanonik kanıt listesini oluştur
   const canonicalEvidenceList: any[] = [];
@@ -748,8 +919,14 @@ export function denetleIngilizceOdr(params: {
       if (Array.isArray(st.kanit_dosyalari)) {
         st.kanit_dosyalari.forEach((k: any) => {
           if (!k) return;
-          let ev = k.url
-            ? canonicalEvidenceList.find(e => Boolean(e.url) && e.url === k.url)
+          const kUrl = (k.url || k.dosya_url || k.storagePath || '').trim();
+          const kRef = parseStorageReference(kUrl);
+          const kBucket = (k.bucket || kRef?.bucket || 'dokumanlar').trim();
+          let ev = kUrl
+            ? canonicalEvidenceList.find(e => {
+                const eUrl = (e.url || e.dosya_url || e.storagePath || '').trim();
+                return Boolean(eUrl && urlsMatch(eUrl, kUrl, kBucket));
+              })
             : null;
           if (!ev) {
             ev = { ...k, no: localEvidenceCounter++ };
@@ -764,8 +941,14 @@ export function denetleIngilizceOdr(params: {
   const rawOdrKanitlar = Array.isArray(kanitlar) ? kanitlar : [];
   rawOdrKanitlar.forEach((ok: any) => {
     if (!ok) return;
-    let ev = ok.url
-      ? canonicalEvidenceList.find(e => Boolean(e.url) && e.url === ok.url)
+    const okUrl = (ok.url || ok.dosya_url || ok.storagePath || '').trim();
+    const okRef = parseStorageReference(okUrl);
+    const okBucket = (ok.bucket || okRef?.bucket || 'dokumanlar').trim();
+    let ev = okUrl
+      ? canonicalEvidenceList.find(e => {
+          const eUrl = (e.url || e.dosya_url || e.storagePath || '').trim();
+          return Boolean(eUrl && urlsMatch(eUrl, okUrl, okBucket));
+        })
       : null;
     if (!ev) {
       const assignedNo = typeof ok.no === 'number' ? ok.no : localEvidenceCounter++;
@@ -775,7 +958,7 @@ export function denetleIngilizceOdr(params: {
   });
 
   // Türkçe ÖDR metninde geçen kanıt numaralarını etiketlerden arındırılmış metin üzerinden dinamik olarak tespit et
-  const trNormalized = normalizeHtmlForCitation(icerikTr);
+  const trNormalized = normalizeHtmlForCitation(htmlTrHealed);
   const trCitationRegex = /\bKan[ıi]t\s*(\d+)\b/gi;
   const trCitedNumbers = new Set<number>();
   let trMatch: RegExpExecArray | null;
@@ -787,16 +970,20 @@ export function denetleIngilizceOdr(params: {
 
   // Metindeki tüm [Evidence N] ve [Kanıt N] (ve düz cümle içi "Evidence N", "Kanıt N") ifadelerini tara
   const enNormalized = normalizeHtmlForCitation(htmlEn);
-  const citationRegex = /\b(?:Evidence|Kan[ıi]t)\s*(\d+)\b/gi;
+  const citationRegex = /\b(Evidence|Kan[ıi]t)\s*(\d+)\b/gi;
   const enFrequencies = new Map<number, number>();
+  const rawCitationLabels = new Map<number, string>();
   let match: RegExpExecArray | null;
   while ((match = citationRegex.exec(enNormalized)) !== null) {
-    const num = parseInt(match[1], 10);
+    const word = /^kan/i.test(match[1]) ? 'Kanıt' : 'Evidence';
+    const num = parseInt(match[2], 10);
     enFrequencies.set(num, (enFrequencies.get(num) || 0) + 1);
+    if (!rawCitationLabels.has(num) || word === 'Kanıt') {
+      rawCitationLabels.set(num, `[${word} ${num}]`);
+    }
   }
 
   // 1. Mükerrerlik Sayacı: Yalnızca kanıt numarasıyla ilişkilendirilebilen tıklanabilir <a> bağlantılarını say.
-  // Her <a> etiketi aynı numarayı içinde birden fazla yazsa bile en fazla 1 sayılır (Set kullanımı).
   const anchorEvidenceCounts = new Map<number, number>();
   const wrongTargetAnchorNums = new Set<number>();
 
@@ -812,21 +999,23 @@ export function denetleIngilizceOdr(params: {
     while ((labelMatch = labelRegex.exec(linkText)) !== null) {
       foundAnyLabel = true;
       const num = parseInt(labelMatch[1], 10);
-      const targetEv =
+      const canonEv =
         canonicalEvidenceList.find(e => Number(e.no) === num) ||
         (num > 0 && num <= canonicalEvidenceList.length ? canonicalEvidenceList[num - 1] : null);
+      const odrTableEv =
+        rawOdrKanitlar.find((e: any) => Number(e?.no) === num) ||
+        (num > 0 && num <= rawOdrKanitlar.length ? rawOdrKanitlar[num - 1] : null);
 
-      if (targetEv) {
-        const { matches, hasConflict } = doesAnchorMatchEvidence(link, targetEv);
-        if (matches) {
-          numsInThisAnchor.add(num);
-        } else if (hasConflict && linkHasHref) {
-          // Yalnızca geçerli bir href mevcutken ve hedef uyuşmazlığı varsa wrongTargetAnchorNums'a ekle!
-          // href yoksa tıklanabilir bağlantı değildir; düz yazı atfını sahte hedef hatasına dönüştürme.
+      const canonCheck = canonEv ? doesAnchorMatchEvidence(link, canonEv) : { matches: false, hasConflict: false };
+      const odrCheck = odrTableEv ? doesAnchorMatchEvidence(link, odrTableEv) : { matches: false, hasConflict: false };
+
+      if (canonCheck.matches || odrCheck.matches) {
+        numsInThisAnchor.add(num);
+      } else if (canonEv || odrTableEv) {
+        if ((canonCheck.hasConflict || odrCheck.hasConflict) && linkHasHref) {
           wrongTargetAnchorNums.add(num);
         }
       } else {
-        // Havuzda bu numaraya karşılık gelen bir kayıt yok
         if (linkHasHref) {
           wrongTargetAnchorNums.add(num);
         }
@@ -834,7 +1023,6 @@ export function denetleIngilizceOdr(params: {
     }
 
     if (!foundAnyLabel) {
-      // Görünen etiket yoksa data-evidence-id veya href'in kanıt havuzundaki karşılığından belirle
       canonicalEvidenceList.forEach(ev => {
         const num = Number(ev.no);
         if (!num) return;
@@ -865,8 +1053,10 @@ export function denetleIngilizceOdr(params: {
   });
 
   // 2. Parite Denetimi: Türkçe raporda atıf alan kanıtların İngilizce metinde bulunması zorunludur
+  const parityFlaggedNums = new Set<number>();
   trCitedNumbers.forEach(trNum => {
     if (!enFrequencies.has(trNum)) {
+      parityFlaggedNums.add(trNum);
       issues.push({
         alt_olcut_id: altOlcutId,
         kod,
@@ -879,30 +1069,57 @@ export function denetleIngilizceOdr(params: {
   });
 
   const missingEvidenceLabels: string[] = [];
+  const missingFlaggedNums = new Set<number>();
+
+  // Bölünmüş 3 parçalı bağlantıda href çakışması varsa raporla
+  conflictingSplitsEn.forEach(conflict => {
+    missingFlaggedNums.add(conflict.num);
+    missingEvidenceLabels.push(`${conflict.label} (Bölünmüş bağlantı parçaları farklı dosya adreslerine gidiyor)`);
+  });
 
   enFrequencies.forEach((_, evNum) => {
-    // 1. Hedef kanıt nesnesini bul:
+    if (missingFlaggedNums.has(evNum)) return;
+
     const targetIdx = evNum - 1;
     const targetEv = 
       canonicalEvidenceList.find(e => Number(e.no) === evNum) ||
-      (targetIdx >= 0 && targetIdx < canonicalEvidenceList.length ? canonicalEvidenceList[targetIdx] : null);
+      (targetIdx >= 0 && targetIdx < canonicalEvidenceList.length ? canonicalEvidenceList[targetIdx] : null) ||
+      rawOdrKanitlar.find((e: any) => Number(e?.no) === evNum) ||
+      (targetIdx >= 0 && targetIdx < rawOdrKanitlar.length ? rawOdrKanitlar[targetIdx] : null);
+
+    const displayLabel = rawCitationLabels.get(evNum) || `[Evidence ${evNum}]`;
 
     if (!targetEv) {
-      // Kanıt havuzunda bu numaraya karşılık gelen bir kayıt yok!
-      missingEvidenceLabels.push(`[Evidence ${evNum}] (Havuzda ${evNum} numaralı kanıt tanımlı değil)`);
+      missingFlaggedNums.add(evNum);
+      missingEvidenceLabels.push(`${displayLabel} (Havuzda ${evNum} numaralı kanıt tanımlı değil)`);
       return;
     }
 
-    // 2. Tıklanabilir bağlantı doğrulaması
     const validLinkCount = anchorEvidenceCounts.get(evNum) || 0;
 
     if (validLinkCount === 0) {
+      missingFlaggedNums.add(evNum);
       if (wrongTargetAnchorNums.has(evNum)) {
-        // Numaralı bağlantı var ama hedefi targetEv ile eşleşmiyor
-        missingEvidenceLabels.push(`[Evidence ${evNum}] (Bağlantı adresi hedef kanıt dosyasıyla eşleşmiyor)`);
+        missingEvidenceLabels.push(`${displayLabel} (Bağlantı adresi hedef kanıt dosyasıyla eşleşmiyor)`);
+      } else {
+        missingEvidenceLabels.push(`${displayLabel} (Düz yazı olarak bırakılmış, tıklanabilir bağlantı yok)`);
       }
-      // NOT: wrongTargetAnchorNums içinde yoksa, metinde sadece düz yazı atfı vardır.
-      // Düz yazı atfı geçerli kanıt numarasına karşılık geliyorsa hata sayılmaz (toplamSorun artmaz).
+    }
+  });
+
+  // 3. ÖDR kanıt tablosundaki (odr.kanitlar) her kanıtın İngilizce ÖDR metninde geçerli <a> bağlantısıyla bulunmasını denetle
+  rawOdrKanitlar.forEach((ok: any, idx: number) => {
+    if (!ok) return;
+    const okUrl = (ok.url || ok.dosya_url || ok.storagePath || '').trim();
+    const okName = (ok.name || ok.dosya_adi || '').trim();
+    if (!okUrl && !okName) return;
+
+    const evNum = typeof ok.no === 'number' ? ok.no : idx + 1;
+    const isLinkedInEn = isEvidenceLinkedInHtml(htmlEn, ok);
+
+    if (!isLinkedInEn && !parityFlaggedNums.has(evNum) && !missingFlaggedNums.has(evNum)) {
+      missingFlaggedNums.add(evNum);
+      missingEvidenceLabels.push(`[Evidence ${evNum}] (ÖDR tablosundaki "${okName || `Kanıt ${evNum}`}" İngilizce metinde bağlantılı değil)`);
     }
   });
 
@@ -942,8 +1159,9 @@ export function degerlendirTekOdr(params: {
   kanitlar: any[] | null | undefined;
   pukoStages?: PukoKayit[] | null;
 }): TekOdrDegerlendirmeSonucu {
-  const htmlTr = params.icerikTr || '';
-  const cleanNormalizedTr = normalizeHtmlForCitation(htmlTr);
+  const rawHtmlTr = params.icerikTr || '';
+  const conflictingSplitsTr = extractConflictingSplitEvidenceTags(rawHtmlTr);
+  const htmlTr = healSplitEvidenceTags(rawHtmlTr);
   const pukoStages = Array.isArray(params.pukoStages) ? params.pukoStages : [];
 
   const orderMap: Record<string, number> = { planlama: 1, uygulama: 2, kontrol: 3, onlem: 4, iyilestirme: 4, olgunluk: 5 };
@@ -959,7 +1177,15 @@ export function degerlendirTekOdr(params: {
     if (Array.isArray(p.kanit_dosyalari)) {
       p.kanit_dosyalari.forEach((k: any) => {
         if (!k) return;
-        let ev = k.url ? canonicalList.find(e => Boolean(e.url) && e.url === k.url) : null;
+        const kUrl = (k.url || k.dosya_url || k.storagePath || '').trim();
+        const kRef = parseStorageReference(kUrl);
+        const kBucket = (k.bucket || kRef?.bucket || 'dokumanlar').trim();
+        let ev = kUrl
+          ? canonicalList.find(e => {
+              const eUrl = (e.url || e.dosya_url || e.storagePath || '').trim();
+              return Boolean(eUrl && urlsMatch(eUrl, kUrl, kBucket));
+            })
+          : null;
         if (!ev) {
           ev = { ...k, no: localCounter++ };
           canonicalList.push(ev);
@@ -969,18 +1195,9 @@ export function degerlendirTekOdr(params: {
     }
   });
 
-  const allStageEvidences: KanitDosyasi[] = [];
-  siraliPukoStages.forEach(p => {
-    if (Array.isArray(p.kanit_dosyalari)) {
-      p.kanit_dosyalari.forEach(k => {
-        if (k) allStageEvidences.push(k);
-      });
-    }
-  });
-
   const uncitedTrEvidences: Array<{ kanit_no?: number | string; dosya_adi: string; asama: string; url?: string }> = [];
 
-  // PUKÖ aşamalarındaki kanıtların Türkçe ÖDR metninde aktif bağlantı veya düz metin olarak atıf alıp almadığını kontrol et
+  // 1. PUKÖ aşamalarındaki kanıtların Türkçe ÖDR metninde geçerli <a> bağlantısıyla atıf alıp almadığını kontrol et
   siraliPukoStages.forEach(p => {
     if (Array.isArray(p.kanit_dosyalari)) {
       p.kanit_dosyalari.forEach((k) => {
@@ -990,29 +1207,13 @@ export function degerlendirTekOdr(params: {
         if (!kUrl && !kName) return;
 
         const evNum = pukoKanitKanonikMap.get(k) ?? k.no ?? k.evidence_no;
+        const hasAnchorLink = isEvidenceLinkedInHtml(htmlTr, k);
 
-        const hasAnchorLink =
-          isEvidenceLinkedInHtml(htmlTr, k) ||
-          (Boolean(kName) &&
-            allStageEvidences.some(
-              otherK =>
-                otherK !== k &&
-                (otherK.name || otherK.dosya_adi || '').trim() === kName &&
-                isEvidenceLinkedInHtml(htmlTr, otherK)
-            ));
-
-        const hasPlainTextCitation =
-          Boolean(evNum && new RegExp(`\\bKan[ıi]t\\s*${evNum}\\b`, 'i').test(cleanNormalizedTr)) ||
-          (Boolean(kName) && cleanNormalizedTr.toLowerCase().includes(kName.toLowerCase()));
-
-        const inOdrHtml = hasAnchorLink || hasPlainTextCitation;
-
-        if (!inOdrHtml) {
+        if (!hasAnchorLink) {
           const kRef = parseStorageReference(kUrl);
           const kBucket = (k.bucket || kRef?.bucket || 'dokumanlar').trim();
           const alreadyListed = uncitedTrEvidences.some(u =>
-            (kUrl && u.url && urlsMatch(kUrl, u.url, kBucket)) ||
-            (kName && u.dosya_adi === kName)
+            Boolean(kUrl && u.url && urlsMatch(kUrl, u.url, kBucket))
           );
           if (!alreadyListed) {
             uncitedTrEvidences.push({
@@ -1027,15 +1228,54 @@ export function degerlendirTekOdr(params: {
     }
   });
 
+  // 2. ÖDR kanıt tablosundaki (odr.kanitlar) kanıtları Türkçe ÖDR metninde ayrı kontrol et
+  const rawOdrKanitlar = Array.isArray(params.kanitlar) ? params.kanitlar : [];
+  rawOdrKanitlar.forEach((ok: any, idx: number) => {
+    if (!ok) return;
+    const okUrl = (ok.url || ok.dosya_url || ok.storagePath || '').trim();
+    const okName = (ok.name || ok.dosya_adi || '').trim();
+    if (!okUrl && !okName) return;
+
+    const evNum = typeof ok.no === 'number' ? ok.no : idx + 1;
+    const okRef = parseStorageReference(okUrl);
+    const okBucket = (ok.bucket || okRef?.bucket || 'dokumanlar').trim();
+
+    const hasAnchorLink = isEvidenceLinkedInHtml(htmlTr, ok);
+    if (!hasAnchorLink) {
+      const alreadyListed = uncitedTrEvidences.some(u =>
+        Boolean(okUrl && u.url && urlsMatch(okUrl, u.url, okBucket))
+      );
+      if (!alreadyListed) {
+        uncitedTrEvidences.push({
+          kanit_no: evNum,
+          dosya_adi: okName || okUrl.split('/').pop() || `Kanıt ${evNum}`,
+          asama: ok.puko_asamasi || 'odr_tablosu',
+          url: okUrl,
+        });
+      }
+    }
+  });
+
+  // 3. Türkçe ÖDR'de bölünmüş bağlantı çakışmalarını ekle
+  conflictingSplitsTr.forEach(conflict => {
+    uncitedTrEvidences.push({
+      kanit_no: conflict.num,
+      dosya_adi: `${conflict.label} (Çakışan Bölünmüş Bağlantı)`,
+      asama: 'odr_tablosu',
+      url: conflict.hrefs[0] || conflict.label,
+    });
+  });
+
   const issues = denetleIngilizceOdr(params);
 
   const warningDetails: string[] = [];
 
-  // 1. Türkçe ÖDR'de atıf almamış aşama kanıtlarının tamamı:
+  // 1. Türkçe ÖDR'de atıf almamış kanıtların tamamı:
   if (uncitedTrEvidences.length > 0) {
     uncitedTrEvidences.forEach(u => {
       const label = u.kanit_no ? `[Kanıt ${u.kanit_no}]` : '[Kanıt]';
-      warningDetails.push(`${label} ${u.dosya_adi} (${u.asama} aşaması) - Türkçe ÖDR metninde henüz atıf almamıştır.`);
+      const asamaLabel = ASAMA_ISIMLERI[u.asama] || u.asama;
+      warningDetails.push(`${label} ${u.dosya_adi} (${asamaLabel}) - Türkçe ÖDR metninde geçerli ve tıklanabilir bağlantıyla atıf almamıştır.`);
     });
   }
 
