@@ -4,12 +4,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
-import { Loader2, ChevronRight, AlertCircle, CheckCircle2, TrendingUp, Award, Layers } from 'lucide-react';
+import { Loader2, ChevronRight, AlertCircle, CheckCircle2, TrendingUp, Award, Layers, User, AlertTriangle } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { getLocalizedField } from '@/lib/i18n-utils';
 import { usePeriod } from '@/contexts/PeriodContext';
 import { getAssignedLetter } from '@/lib/utils';
 import { hesaplaAkreditasyonIlerleme, IlerlemeSonucu } from '@/lib/akreditasyonIlerleme';
+import type { SorumluHocaBilgisi } from '@/lib/olcutAtamalariUtils';
 
 export default function OlcutlerPage() {
   const t = useTranslations('Criteria');
@@ -22,6 +23,8 @@ export default function OlcutlerPage() {
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>('');
   const [kokpitData, setKokpitData] = useState<IlerlemeSonucu | null>(null);
+  const [atamalarMap, setAtamalarMap] = useState<Record<string, SorumluHocaBilgisi[]>>({});
+  const [atamalarLoaded, setAtamalarLoaded] = useState<boolean>(false);
   const locale = useLocale();
 
   const toggleGroup = (groupKey: string) => {
@@ -34,6 +37,8 @@ export default function OlcutlerPage() {
       try {
         setIsLoading(true);
         setErrorStatus(null);
+        setAtamalarLoaded(false);
+        setAtamalarMap({});
         
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
@@ -129,6 +134,19 @@ export default function OlcutlerPage() {
           if (assignedLetters.length > 0) {
             const { data: baslikData } = await supabase.from('ana_basliklar').select('*').in('kod', assignedLetters);
             if (baslikData) setAnaBasliklar(baslikData);
+          }
+
+          try {
+            const res = await fetch(`/api/olcut-atamalari?donem_id=${encodeURIComponent(selectedPeriod.id)}`);
+            if (res.ok) {
+              const json = await res.json();
+              if (json && json.data) {
+                setAtamalarMap(json.data);
+                setAtamalarLoaded(true);
+              }
+            }
+          } catch (atamaErr) {
+            console.error('Atama bilgileri alınamadı:', atamaErr);
           }
         }
       } catch (err) {
@@ -262,11 +280,29 @@ export default function OlcutlerPage() {
               </button>
               {openGroups[harf] && (
                 <div className="p-6 bg-slate-50 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 border-t">
-                  {items.map((o: any) => (
-                    <Link key={o.id} href={`/olcutler/${o.id}/uygulama`} className="p-4 bg-white border rounded-xl hover:border-indigo-500 shadow-sm transition-all">
-                      <p className="text-sm font-bold text-slate-700">{o.kod} {getLocalizedField(o, 'olcut_adi', locale)}</p>
-                    </Link>
-                  ))}
+                  {items.map((o: any) => {
+                    const sorumlular = atamalarMap[String(o.id)] || [];
+                    return (
+                      <Link key={o.id} href={`/olcutler/${o.id}/uygulama`} className="p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-500 shadow-sm transition-all flex flex-col justify-between gap-3">
+                        <p className="text-sm font-bold text-slate-700 leading-snug">{o.kod} {getLocalizedField(o, 'olcut_adi', locale)}</p>
+                        {atamalarLoaded && (
+                          <div className="pt-2.5 border-t border-slate-100 flex items-center">
+                            {sorumlular.length > 0 ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-medium max-w-full">
+                                <User className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                                <span className="truncate">{sorumlular.map(s => s.ad_soyad).join(', ')}</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium">
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                                <span>Atanmamış</span>
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </div>
