@@ -9,6 +9,7 @@ export default async function IzlencelerPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  let isYonetici = false;
   let isAuthorizedToEdit = false;
   if (user) {
     const { data: profileData } = await supabase
@@ -21,7 +22,7 @@ export default async function IzlencelerPage() {
     const userRole = (profile?.rol || '').toLowerCase();
     
     // Daha kapsayıcı Regex kontrolü (Türkçe karakter ve farklı yazım türleri için)
-    const isYonetici = /admin|yonetici|yönetici|manager/i.test(userRole);
+    isYonetici = /admin|yonetici|yönetici|manager/i.test(userRole);
     const isBirimSorumlusu = /birim/i.test(userRole);
     const isOgretimElemani = /ogretim|öğretim|hoca|personel/i.test(userRole);
     
@@ -143,6 +144,7 @@ export default async function IzlencelerPage() {
           user={user} 
           kategoriler={kategoriler} 
           isAuthorizedToEdit={isAuthorizedToEdit}
+          isAdmin={isYonetici}
         />
       </div>
       
