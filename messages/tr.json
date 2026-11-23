@@ -23,7 +23,9 @@
     "coordinators": "Koordinatörler",
     "syllabus_data": "İzlence Verileri",
     "audit_log": "Aktivite Günlüğü",
-    "external_evidence": "Dış Kanıtlar"
+    "external_evidence": "Dış Kanıtlar",
+    "support": "Öneri ve Destek",
+    "uni_puko": "Üniversite PUKÖ"
   },
   "Common": {
     "save": "Kaydet",
@@ -37,7 +39,8 @@
     "unknown_user": "Bilinmeyen Kullanıcı",
     "unknown_error": "Bilinmeyen Hata",
     "delete_success": "Başarıyla silindi",
-    "delete_error": "Silinirken hata oluştu"
+    "delete_error": "Silinirken hata oluştu",
+    "delete_confirm": "Silmek istediğinize emin misiniz?"
   },
   "Announcements": {
     "title": "Duyurular",
@@ -113,7 +116,11 @@
     "description": "Kurumsal akreditasyon için değerlendirilecek ölçütleri yönetin.",
     "sub_criteria_count": "{count} adet alt ölçüt bulunuyor",
     "group": "{harf} Grubu",
-    "viewDetails": "Detayları Gör"
+    "viewDetails": "Detayları Gör",
+    "account_created_title": "Hesabınız Başarıyla Oluşturuldu",
+    "account_created_desc": "Hesabınız şu an bekleme durumundadır. Bir yönetici size bir ölçüt atadığında, sistemdeki birim sorumlusu yetkileriniz otomatik olarak aktifleşecektir.",
+    "no_assigned_criteria": "Şu an için atanmış bir ölçütünüz bulunmuyor.",
+    "unassigned_badge": "Atanmamış"
   },
   "StepPanel": {
     "kalite_el_kitabi_title": "1. KALİTE EL KİTABI",
@@ -171,7 +178,8 @@
     "no_criterion_name": "Ölçüt adı yok",
     "unknown_criterion": "Bilinmeyen Ölçüt",
     "export_excel": "Excel Olarak İndir (.xls)",
-    "report_date": "Tarih:"
+    "report_date": "Tarih:",
+    "risk_analysis_placeholder": "Risk analizi ve önlemleri yazınız..."
   },
   "Reports": {
     "title": "Global Kurum Raporu",
@@ -394,7 +402,8 @@
     "report_saved_notification": "Ölçüt Özdeğerlendirme Raporu hazırlandı. (Ölçüt {code})",
     "stage_header": "{stage} AŞAMASI",
     "maturity_score_header": "OLGUNLUK DÜZEYİ PUANI:",
-    "merge_data_description": "Özdeğerlendirme Raporunuzu oluşturmak için verileri birleştirin."
+    "merge_data_description": "Özdeğerlendirme Raporunuzu oluşturmak için verileri birleştirin.",
+    "upload_error": "Dosya yüklenirken bir hata oluştu."
   },
   "Auth": {
     "login_title": "Hoş Geldiniz",
@@ -474,7 +483,8 @@
       "success_desc": "Ankete katıldığınız için teşekkür ederiz. Yanıtınız başarıyla sisteme iletildi.",
       "footer": "Bu içerik BKY Sistemi kullanılarak oluşturulmuştur."
     },
-    "survey_title": "ANKET BAŞLIĞI"
+    "survey_title": "ANKET BAŞLIĞI",
+    "delete_survey_confirm": "\"{baslik}\" anketini kalıcı olarak silmek istediğinize emin misiniz?"
   },
   "Documents": {
     "title": "Döküman Yönetimi",
@@ -557,7 +567,9 @@
     "assign_success": "Koordinatör başarıyla atandı.",
     "assign_error": "Atama kaydedilirken hata oluştu:",
     "select_user_topic_error": "Lütfen kullanıcı ve başlık seçiniz.",
-    "fetch_error": "Veriler yüklenirken bir hata oluştu:"
+    "fetch_error": "Veriler yüklenirken bir hata oluştu:",
+    "email_not_found": "Bu e-posta adresine sahip kullanıcı bulunamadı.",
+    "remove_assignment": "Atamayı Kaldır"
   },
   "AuditLog": {
     "title": "Aktivite Günlüğü",
@@ -643,10 +655,43 @@
     "evidence_missing": "Kanıt belgesi yüklenmemiş.",
     "citation_missing": "Yüklenen kanıtlara açıklama metninde usulüne uygun atıf yapılmamış.",
     "puko_incomplete": "5 PUKÖ aşaması eksiksiz onaylanmamış.",
-    "tab_english_odr": "İngilizce ÖDR Kusurları",
+    "tab_english_odr": "3. İngilizce ÖDR Kusurları",
     "english_odr_missing_or_copied": "İngilizce ÖDR eksik veya Türkçe metin kopyalanmış",
     "english_odr_evidence_missing": "İngilizce ÖDR’de kanıt bağlantısı eksik",
-    "go_to_odr": "ÖDR'ye Git"
+    "go_to_odr": "ÖDR'ye Git",
+    "modal_title": "Akreditasyon Stres Testi (PUKÖ Bütünlük Analizi)",
+    "selected_period": "Seçili Dönem",
+    "active_risks": "Aktif Risk/Kusur",
+    "exception_accepted_count": "({count} İstisna Kabul Edildi)",
+    "show_exceptions": "İstisnaları Göster ({count})",
+    "tab_unmapped_criteria": "1. ÖDR'ye Alınmamış Ölçütler",
+    "tab_missing_evidence": "2. Aşamalarda Kanıt Var, ÖDR'de Yok",
+    "all_clear_title": "Mükemmel! Bütünlük Kusuru Bulunmadı",
+    "all_clear_desc": "Tüm ölçütler ÖDR raporuna dahil edilmiş, PUKÖ kanıtları eksiksiz aktarılmış ve boş aşama bulunmamaktadır.",
+    "tab_odryok_empty": "Tüm ölçütler ÖDR raporuna alınmış durumdadır.",
+    "tab_kanitfark_empty": "Aşamalardaki tüm kanıtlar ÖDR raporunda mevcuttur.",
+    "tab_en_empty": "İngilizce ÖDR içeriklerinde ve kanıt bağlantılarında herhangi bir kusur bulunamadı.",
+    "evidence_count": "{count} Kanıt Mevcut",
+    "no_evidence": "Kanıt Yok",
+    "exception_accepted": "İstisna Kabul Edildi",
+    "undo": "Geri Al",
+    "processing": "İşleniyor...",
+    "saving": "Kaydediliyor...",
+    "no_issue": "Sorun Yok",
+    "no_issue_tooltip_odr": "Bu durumu inceledim, sorun yok olarak işaretle",
+    "no_issue_tooltip_evidence": "Bu kanıtın ÖDR metninde olmamasını sorun yok / istisna olarak işaretle",
+    "no_issue_tooltip_en": "Bu kusuru inceledim, sorun yok / istisna olarak işaretle",
+    "missing_evidence_prefix": "Eksik Kanıt: {name}",
+    "en_badge_missing_or_copied": "İçerik Eksik / TR Kopyası",
+    "en_badge_duplicate": "Mükerrer Kanıt",
+    "en_badge_not_transferred": "İngilizceye Aktarılmamış Kanıt",
+    "en_badge_link_missing": "Eksik Kanıt Bağlantısı",
+    "db_query_error": "Veritabanı sorgu hatası",
+    "test_run_failed": "Stres testi çalıştırılamadı: {error}",
+    "test_run_error": "Stres testi çalıştırılırken bir hata oluştu",
+    "exception_accepted_toast": "İstisna kabul edildi. Uyarı listeden düşürüldü.",
+    "exception_reverted_toast": "İstisna geri alındı. Uyarı tekrar listelenecektir.",
+    "exception_save_error": "İstisna kaydedilemedi"
   },
   "PresentationMode": {
     "enter": "Sunum Modu",
@@ -685,5 +730,46 @@
     "delete_failed": "Dosya depodan silinemedi. İşlem iptal edildi.",
     "delete_success": "Belge depodan ve arşivden kaldırıldı.",
     "upload_success": "Belge başarıyla yüklendi."
+  },
+  "Approval": {
+    "title": "Veri Onayı",
+    "description": "Birimlerden gelen veri girişlerini inceleyin. Uygun olanları onaylayın, eksik veya hatalı olanları red nedeni belirterek reddedin.",
+    "success_title": "Başarılı",
+    "error_title": "Hata",
+    "search_placeholder": "Ölçüt ara...",
+    "total_pending": "Toplam {count} bekleyen veri",
+    "empty_pending": "Onay bekleyen veri girişi bulunmuyor.",
+    "unnamed_criterion": "İsim Bulunamadı",
+    "hide": "Gizle",
+    "review": "İncele",
+    "approve": "Onayla",
+    "reject": "Reddet",
+    "empty_content": "İçerik boş.",
+    "evidences": "Kanıtlar",
+    "evidence_fallback": "Kanıt",
+    "integrity_warning_title": "ÖDR / PUKÖ Bütünlük Uyarısı",
+    "integrity_warning_desc": "Bu raporda ({code}) aşağıdaki uyarılar tespit edilmiştir:",
+    "integrity_warning_hint": "Raporu yine de onaylamak istiyorsanız \"İstisna Olarak Onayla\" butonuna tıklayınız.",
+    "cancel": "Vazgeç",
+    "approve_as_exception": "Uyarıları İnceledim, İstisna Olarak Onayla",
+    "reject_title": "Veriyi Reddet",
+    "reject_desc": "Lütfen bu veriyi neden reddettiğinizi açıklayın. Bu açıklama ilgili birim kullanıcısına iletilecektir.",
+    "reject_placeholder": "Örn: Kanıtlar yetersiz, açıklama metni güncellenmeli...",
+    "reject_cancel": "İptal",
+    "reject_submit": "Reddet",
+    "session_not_found": "Kullanıcı oturumu bulunamadı.",
+    "no_access": "Bu sayfaya erişim yetkiniz yok veya atanmış bir başlığınız bulunmuyor.",
+    "heading_mismatch": "Sorumlu olduğunuz '{topic}' başlığı sistemdeki başlıklarla eşleşmedi.",
+    "load_error": "Veriler yüklenirken hata oluştu.",
+    "report_not_found": "Onaylanacak rapor bulunamadı.",
+    "puko_update_error": "PUKÖ tablosu güncellenemedi ({error}). ÖDR durumu geri alındı.",
+    "approve_confirm": "Bu raporu onaylamak istediğinize emin misiniz?",
+    "approve_success": "Rapor ve ilgili PUKÖ kayıtları başarıyla onaylandı.",
+    "approve_error": "Onaylanırken hata oluştu.",
+    "approve_check_error": "Onay kontrolü sırasında hata oluştu.",
+    "reject_reason_min": "Red gerekçesi en az 5 karakter olmalıdır.",
+    "reject_api_error": "Rapor reddedilirken bir hata oluştu.",
+    "reject_success": "Rapor reddedildi ve bildirimler güncellendi.",
+    "reject_error": "Reddedilirken hata oluştu."
   }
 }

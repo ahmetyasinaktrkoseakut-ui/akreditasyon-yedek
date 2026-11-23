@@ -28,6 +28,7 @@ const getAsamaSlug = (asama: string) => {
 
 export default function BildirimlerTableClient({ initialData, isApprover = false }: { initialData: any[], isApprover?: boolean }) {
   const t = useTranslations('Notifications');
+  const tAssignments = useTranslations('Assignments');
   const { selectedPeriod } = usePeriod();
   const [data, setData] = useState(initialData);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -423,7 +424,7 @@ export default function BildirimlerTableClient({ initialData, isApprover = false
                           {row.alt_olcutler?.kod || '-'}
                         </span>
                         <div className="text-sm font-extrabold text-slate-800 max-w-[300px] truncate group-hover:text-indigo-600 transition-colors" title={getLocalizedField(row.alt_olcutler, 'olcut_adi', locale)}>
-                          {getLocalizedField(row.alt_olcutler, 'olcut_adi', locale) || t('Assignments.sidebar.anonymous_user')}
+                          {getLocalizedField(row.alt_olcutler, 'olcut_adi', locale) || tAssignments('sidebar.anonymous_user')}
                         </div>
                       </div>
                     </td>

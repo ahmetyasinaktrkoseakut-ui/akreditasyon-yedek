@@ -23,7 +23,9 @@
     "coordinators": "Coordinators",
     "syllabus_data": "Syllabus Data",
     "audit_log": "Activity Log",
-    "external_evidence": "External Evidence"
+    "external_evidence": "External Evidence",
+    "support": "Suggestions & Support",
+    "uni_puko": "University PDCA"
   },
   "Common": {
     "save": "Save",
@@ -37,7 +39,8 @@
     "unknown_user": "Unknown User",
     "unknown_error": "Unknown Error",
     "delete_success": "Deleted successfully",
-    "delete_error": "Error during deletion"
+    "delete_error": "Error during deletion",
+    "delete_confirm": "Are you sure you want to delete?"
   },
   "Announcements": {
     "title": "Announcements",
@@ -113,7 +116,11 @@
     "description": "Manage the criteria to be evaluated for institutional accreditation.",
     "sub_criteria_count": "{count} sub-criteria found",
     "group": "{harf} Group",
-    "viewDetails": "View Details"
+    "viewDetails": "View Details",
+    "account_created_title": "Your Account Was Created Successfully",
+    "account_created_desc": "Your account is currently pending approval. Once an administrator assigns a criterion to you, your unit officer permissions will be activated automatically.",
+    "no_assigned_criteria": "You do not have any assigned criteria yet.",
+    "unassigned_badge": "Unassigned"
   },
   "StepPanel": {
     "kalite_el_kitabi_title": "1. QUALITY MANUAL",
@@ -167,7 +174,7 @@
       "tracking": "Tracking",
       "riskler": "Risk Analysis"
     },
-    "risk_analysis_placeholder": "Enter potential risks and measures for the process here...",
+    "risk_analysis_placeholder": "Write risk analysis and preventive actions...",
     "unknown_code": "Unknown Code",
     "unknown_criterion": "Unknown Criterion",
     "no_criterion_name": "No Criterion Name",
@@ -377,7 +384,8 @@
     "report_saved_notification": "Criterion Self-Evaluation Report prepared. (Criterion {code})",
     "stage_header": "{stage} STAGE",
     "maturity_score_header": "MATURITY LEVEL SCORE:",
-    "merge_data_description": "Merge data to create your Institutional Self-Evaluation Report."
+    "merge_data_description": "Merge data to create your Institutional Self-Evaluation Report.",
+    "upload_error": "An error occurred while uploading the file."
   },
   "Maturity": {
     "title": "Process Maturity Score",
@@ -475,7 +483,8 @@
       "success_desc": "Thank you for participating in the survey. Your response has been successfully sent to the system.",
       "footer": "This content was created using the BKY System."
     },
-    "survey_title": "SURVEY TITLE"
+    "survey_title": "SURVEY TITLE",
+    "delete_survey_confirm": "Are you sure you want to permanently delete the survey \"{baslik}\"?"
   },
   "Documents": {
     "title": "Document Management",
@@ -558,7 +567,9 @@
     "assign_success": "Coordinator successfully assigned.",
     "assign_error": "Error occurred while saving assignment:",
     "select_user_topic_error": "Please select a user and a topic.",
-    "fetch_error": "An error occurred while loading data:"
+    "fetch_error": "An error occurred while loading data:",
+    "email_not_found": "No user found with this email address.",
+    "remove_assignment": "Remove Assignment"
   },
   "AuditLog": {
     "title": "Activity Log",
@@ -644,10 +655,43 @@
     "evidence_missing": "Evidence document is not uploaded.",
     "citation_missing": "Uploaded evidence is not properly cited in the explanation.",
     "puko_incomplete": "All 5 PDCA phases are not fully approved.",
-    "tab_english_odr": "English Self-Evaluation Issues",
+    "tab_english_odr": "3. English SER Issues",
     "english_odr_missing_or_copied": "English self-evaluation is missing or unedited copy of Turkish text",
     "english_odr_evidence_missing": "Missing evidence link in English self-evaluation",
-    "go_to_odr": "Go to Self-Evaluation"
+    "go_to_odr": "Go to Self-Evaluation",
+    "modal_title": "Accreditation Stress Test (PDCA Integrity Analysis)",
+    "selected_period": "Selected Period",
+    "active_risks": "Active Risks/Issues",
+    "exception_accepted_count": "({count} Exceptions Accepted)",
+    "show_exceptions": "Show Exceptions ({count})",
+    "tab_unmapped_criteria": "1. Criteria Not Added to SER",
+    "tab_missing_evidence": "2. Evidence in Phases, Missing in SER",
+    "all_clear_title": "Excellent! No Integrity Issues Found",
+    "all_clear_desc": "All criteria are included in the SER, PDCA evidences are fully linked, and there are no empty phases.",
+    "tab_odryok_empty": "All criteria have been included in the SER.",
+    "tab_kanitfark_empty": "All phase evidences are present in the SER.",
+    "tab_en_empty": "No issues found in English SER contents or evidence links.",
+    "evidence_count": "{count} Evidence(s)",
+    "no_evidence": "No Evidence",
+    "exception_accepted": "Exception Accepted",
+    "undo": "Undo",
+    "processing": "Processing...",
+    "saving": "Saving...",
+    "no_issue": "No Issue",
+    "no_issue_tooltip_odr": "Reviewed, mark as no issue",
+    "no_issue_tooltip_evidence": "Mark missing evidence in SER as no issue / exception",
+    "no_issue_tooltip_en": "Reviewed, mark this issue as no issue / exception",
+    "missing_evidence_prefix": "Missing Evidence: {name}",
+    "en_badge_missing_or_copied": "Missing / Copied from TR",
+    "en_badge_duplicate": "Duplicate Evidence",
+    "en_badge_not_transferred": "Evidence Not Transferred to EN",
+    "en_badge_link_missing": "Missing Evidence Link",
+    "db_query_error": "Database query error",
+    "test_run_failed": "Stress test failed to run: {error}",
+    "test_run_error": "An error occurred while running the stress test",
+    "exception_accepted_toast": "Exception accepted. Warning removed from the active list.",
+    "exception_reverted_toast": "Exception reverted. Warning will be listed again.",
+    "exception_save_error": "Failed to save exception"
   },
   "PresentationMode": {
     "enter": "Presentation Mode",
@@ -686,5 +730,46 @@
     "delete_failed": "Could not delete file from storage. Operation aborted.",
     "delete_success": "Document removed from storage and archive.",
     "upload_success": "Document uploaded successfully."
+  },
+  "Approval": {
+    "title": "Data Approval",
+    "description": "Review incoming submissions from units. Approve valid reports, or reject incomplete/erroneous ones with a reason.",
+    "success_title": "Success",
+    "error_title": "Error",
+    "search_placeholder": "Search criterion...",
+    "total_pending": "Total {count} pending",
+    "empty_pending": "No submissions pending approval.",
+    "unnamed_criterion": "Name Not Found",
+    "hide": "Hide",
+    "review": "Review",
+    "approve": "Approve",
+    "reject": "Reject",
+    "empty_content": "Content is empty.",
+    "evidences": "Evidences",
+    "evidence_fallback": "Evidence",
+    "integrity_warning_title": "SER / PDCA Integrity Warning",
+    "integrity_warning_desc": "The following warnings were detected in this report ({code}):",
+    "integrity_warning_hint": "If you still want to approve this report, click \"Approve as Exception\".",
+    "cancel": "Cancel",
+    "approve_as_exception": "Warnings Reviewed, Approve as Exception",
+    "reject_title": "Reject Submission",
+    "reject_desc": "Please explain why you are rejecting this submission. This note will be sent to the unit officer.",
+    "reject_placeholder": "E.g., Evidences are insufficient, description must be updated...",
+    "reject_cancel": "Cancel",
+    "reject_submit": "Reject",
+    "session_not_found": "User session not found.",
+    "no_access": "You do not have access to this page or no heading is assigned to you.",
+    "heading_mismatch": "Your assigned heading '{topic}' did not match system headings.",
+    "load_error": "An error occurred while loading data.",
+    "report_not_found": "Report to approve not found.",
+    "puko_update_error": "Could not update PDCA table ({error}). SER status was reverted.",
+    "approve_confirm": "Are you sure you want to approve this report?",
+    "approve_success": "Report and related PDCA records were approved successfully.",
+    "approve_error": "An error occurred while approving.",
+    "approve_check_error": "An error occurred during approval check.",
+    "reject_reason_min": "Rejection reason must be at least 5 characters.",
+    "reject_api_error": "An error occurred while rejecting the report.",
+    "reject_success": "Report rejected and notifications updated.",
+    "reject_error": "An error occurred while rejecting."
   }
 }

@@ -239,9 +239,9 @@ export default function IzlemePage() {
       ]);
 
       if (pukoRes.error || altRes.error || odrRes.error) {
-        const errorMsg = pukoRes.error?.message || altRes.error?.message || odrRes.error?.message || 'Veritabanı sorgu hatası';
+        const errorMsg = pukoRes.error?.message || altRes.error?.message || odrRes.error?.message || tStress('db_query_error');
         console.error('Stres testi sorgu hatası:', { pukoErr: pukoRes.error, altErr: altRes.error, odrErr: odrRes.error });
-        toast.error(`Stres testi çalıştırılamadı: ${errorMsg}`);
+        toast.error(tStress('test_run_failed', { error: errorMsg }));
         return;
       }
 
@@ -271,7 +271,7 @@ export default function IzlemePage() {
       setIsStressModalOpen(true);
     } catch (err: any) {
       console.error('Stres testi hatası:', err);
-      toast.error(err?.message || 'Stres testi çalıştırılırken bir hata oluştu');
+      toast.error(err?.message || tStress('test_run_error'));
     } finally {
       setIsTestingStress(false);
     }
@@ -308,13 +308,13 @@ export default function IzlemePage() {
       setIstisnaMap(nextMap);
 
       if (params.aktif) {
-        toast.success('İstisna kabul edildi. Uyarı listeden düşürüldü.');
+        toast.success(tStress('exception_accepted_toast'));
       } else {
-        toast.success('İstisna geri alındı. Uyarı tekrar listelenecektir.');
+        toast.success(tStress('exception_reverted_toast'));
       }
     } catch (err: any) {
       console.error('İstisna işlemi hatası:', err);
-      toast.error(err?.message || 'İstisna kaydedilemedi');
+      toast.error(err?.message || tStress('exception_save_error'));
     } finally {
       setIslemYapilanAnahtar(null);
     }
@@ -527,13 +527,13 @@ export default function IzlemePage() {
                     <div>
                       <DialogTitle className="flex items-center gap-2 text-indigo-900 font-black">
                         <ShieldAlert className="w-5 h-5 text-indigo-600" />
-                        Akreditasyon Stres Testi (PUKÖ Bütünlük Analizi)
+                        {tStress('modal_title')}
                       </DialogTitle>
                       <p className="text-xs text-slate-500 mt-1">
-                        {selectedPeriod?.donem_adi || 'Seçili Dönem'} • Aktif Risk/Kusur: <span className="font-bold text-slate-800">{filtrelenmisSonuc?.toplamSorun || 0}</span>
+                        {selectedPeriod?.donem_adi || tStress('selected_period')} • {tStress('active_risks')}: <span className="font-bold text-slate-800">{filtrelenmisSonuc?.toplamSorun || 0}</span>
                         {istisnaliSayilar.toplamIstisna > 0 && (
                           <span className="text-emerald-700 font-medium ml-2">
-                            ({istisnaliSayilar.toplamIstisna} İstisna Kabul Edildi)
+                            {tStress('exception_accepted_count', { count: istisnaliSayilar.toplamIstisna })}
                           </span>
                         )}
                       </p>
@@ -547,7 +547,7 @@ export default function IzlemePage() {
                           onChange={e => setGosterIstisnalar(e.target.checked)}
                           className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
                         />
-                        <span>İstisnaları Göster ({istisnaliSayilar.toplamIstisna})</span>
+                        <span>{tStress('show_exceptions', { count: istisnaliSayilar.toplamIstisna })}</span>
                       </label>
                     )}
                   </div>
@@ -569,7 +569,7 @@ export default function IzlemePage() {
                         : 'border-transparent text-slate-500 hover:text-slate-700'
                     }`}
                   >
-                    <span>1. ÖDR'ye Alınmamış Ölçütler</span>
+                    <span>{tStress('tab_unmapped_criteria')}</span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
                       (filtrelenmisSonuc?.odrAlinmamisOlcutler.length || 0) > 0 ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-600'
                     }`}>
@@ -585,7 +585,7 @@ export default function IzlemePage() {
                         : 'border-transparent text-slate-500 hover:text-slate-700'
                     }`}
                   >
-                    <span>2. Aşamalarda Kanıt Var, ÖDR'de Yok</span>
+                    <span>{tStress('tab_missing_evidence')}</span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
                       (filtrelenmisSonuc?.asamadaVarOdrdeYok.length || 0) > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'
                     }`}>
@@ -601,7 +601,7 @@ export default function IzlemePage() {
                         : 'border-transparent text-slate-500 hover:text-slate-700'
                     }`}
                   >
-                    <span>3. İngilizce ÖDR Kusurları</span>
+                    <span>{tStress('tab_english_odr')}</span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
                       (filtrelenmisSonuc?.ingilizceOdrSorunlari?.length || 0) > 0 ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-600'
                     }`}>
@@ -615,16 +615,16 @@ export default function IzlemePage() {
                   {filtrelenmisSonuc?.toplamSorun === 0 && (!gosterIstisnalar || istisnaliSayilar.toplamIstisna === 0) ? (
                     <div className="p-10 text-center bg-emerald-50 rounded-2xl border border-emerald-200">
                       <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
-                      <h4 className="text-base font-bold text-emerald-900">Mükemmel! Bütünlük Kusuru Bulunmadı</h4>
+                      <h4 className="text-base font-bold text-emerald-900">{tStress('all_clear_title')}</h4>
                       <p className="text-xs text-emerald-700 mt-1">
-                        Tüm ölçütler ÖDR raporuna dahil edilmiş, PUKÖ kanıtları eksiksiz aktarılmış ve boş aşama bulunmamaktadır.
+                        {tStress('all_clear_desc')}
                       </p>
                     </div>
                   ) : stressActiveTab === 'odryok' ? (
                     (() => {
                       const items = (gosterIstisnalar ? stressResults?.odrAlinmamisOlcutler : filtrelenmisSonuc?.odrAlinmamisOlcutler) || [];
                       if (items.length === 0) {
-                        return <div className="p-8 text-center text-slate-400 text-sm">Tüm ölçütler ÖDR raporuna alınmış durumdadır.</div>;
+                        return <div className="p-8 text-center text-slate-400 text-sm">{tStress('tab_odryok_empty')}</div>;
                       }
                       return (
                         <div className="divide-y divide-slate-100">
@@ -652,14 +652,14 @@ export default function IzlemePage() {
                                   <span className={`px-2 py-0.5 rounded text-[11px] font-semibold shrink-0 ${
                                     item.puko_kanit_sayisi > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
                                   }`}>
-                                    {item.puko_kanit_sayisi > 0 ? `${item.puko_kanit_sayisi} Kanıt Mevcut` : 'Kanıt Yok'}
+                                    {item.puko_kanit_sayisi > 0 ? tStress('evidence_count', { count: item.puko_kanit_sayisi }) : tStress('no_evidence')}
                                   </span>
                                   <span className="text-xs font-medium text-slate-700 truncate" title={item.olcut_adi}>
                                     {item.olcut_adi}
                                   </span>
                                   {isIstisna && (
                                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
-                                      İstisna Kabul Edildi
+                                      {tStress('exception_accepted')}
                                     </span>
                                   )}
                                 </div>
@@ -675,7 +675,7 @@ export default function IzlemePage() {
                                       })}
                                       className="text-xs font-semibold text-slate-500 hover:text-slate-800 px-2.5 py-1 rounded-lg hover:bg-slate-200 transition-colors"
                                     >
-                                      {isPending ? 'İşleniyor...' : 'Geri Al'}
+                                      {isPending ? tStress('processing') : tStress('undo')}
                                     </button>
                                   ) : (
                                     <button
@@ -687,10 +687,10 @@ export default function IzlemePage() {
                                         aktif: true,
                                       })}
                                       className="text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 shrink-0"
-                                      title="Bu durumu inceledim, sorun yok olarak işaretle"
+                                      title={tStress('no_issue_tooltip_odr')}
                                     >
                                       <CheckCircle className="w-3.5 h-3.5" />
-                                      {isPending ? 'Kaydediliyor...' : 'Sorun Yok'}
+                                      {isPending ? tStress('saving') : tStress('no_issue')}
                                     </button>
                                   )}
                                   <button
@@ -700,7 +700,7 @@ export default function IzlemePage() {
                                     }}
                                     className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-lg hover:bg-indigo-50"
                                   >
-                                    ÖDR'ye Git <ChevronRight className="w-3.5 h-3.5" />
+                                    {tStress('go_to_odr')} <ChevronRight className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
                               </div>
@@ -713,7 +713,7 @@ export default function IzlemePage() {
                     (() => {
                       const items = (gosterIstisnalar ? stressResults?.asamadaVarOdrdeYok : filtrelenmisSonuc?.asamadaVarOdrdeYok) || [];
                       if (items.length === 0) {
-                        return <div className="p-8 text-center text-slate-400 text-sm">Aşamalardaki tüm kanıtlar ÖDR raporunda mevcuttur.</div>;
+                        return <div className="p-8 text-center text-slate-400 text-sm">{tStress('tab_kanitfark_empty')}</div>;
                       }
                       return (
                         <div className="divide-y divide-slate-100">
@@ -744,7 +744,7 @@ export default function IzlemePage() {
                                   </span>
                                   <div className="min-w-0">
                                     <p className="text-xs font-semibold text-slate-800 truncate" title={item.kanit_adi}>
-                                      Eksik Kanıt: {item.kanit_adi}
+                                      {tStress('missing_evidence_prefix', { name: item.kanit_adi })}
                                     </p>
                                     <p className="text-[11px] text-slate-400 truncate">
                                       {item.olcut_adi}
@@ -757,7 +757,7 @@ export default function IzlemePage() {
                                   </div>
                                   {isIstisna && (
                                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
-                                      İstisna Kabul Edildi
+                                      {tStress('exception_accepted')}
                                     </span>
                                   )}
                                 </div>
@@ -773,7 +773,7 @@ export default function IzlemePage() {
                                       })}
                                       className="text-xs font-semibold text-slate-500 hover:text-slate-800 px-2.5 py-1 rounded-lg hover:bg-slate-200 transition-colors"
                                     >
-                                      {isPending ? 'İşleniyor...' : 'Geri Al'}
+                                      {isPending ? tStress('processing') : tStress('undo')}
                                     </button>
                                   ) : (
                                     <button
@@ -785,10 +785,10 @@ export default function IzlemePage() {
                                         aktif: true,
                                       })}
                                       className="text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 shrink-0"
-                                      title="Bu kanıtın ÖDR metninde olmamasını sorun yok / istisna olarak işaretle"
+                                      title={tStress('no_issue_tooltip_evidence')}
                                     >
                                       <CheckCircle className="w-3.5 h-3.5" />
-                                      {isPending ? 'Kaydediliyor...' : 'Sorun Yok'}
+                                      {isPending ? tStress('saving') : tStress('no_issue')}
                                     </button>
                                   )}
                                   <button
@@ -798,7 +798,7 @@ export default function IzlemePage() {
                                     }}
                                     className="text-xs font-bold text-amber-600 hover:text-amber-800 flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-lg hover:bg-amber-50"
                                   >
-                                    ÖDR'ye Git <ChevronRight className="w-3.5 h-3.5" />
+                                    {tStress('go_to_odr')} <ChevronRight className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
                               </div>
@@ -811,7 +811,7 @@ export default function IzlemePage() {
                     (() => {
                       const items = (gosterIstisnalar ? stressResults?.ingilizceOdrSorunlari : filtrelenmisSonuc?.ingilizceOdrSorunlari) || [];
                       if (items.length === 0) {
-                        return <div className="p-8 text-center text-slate-400 text-sm">İngilizce ÖDR içeriklerinde ve kanıt bağlantılarında herhangi bir kusur bulunamadı.</div>;
+                        return <div className="p-8 text-center text-slate-400 text-sm">{tStress('tab_en_empty')}</div>;
                       }
                       return (
                         <div className="divide-y divide-slate-100">
@@ -845,12 +845,12 @@ export default function IzlemePage() {
                                       : 'bg-red-100 text-red-700'
                                   }`}>
                                     {item.sorun_tipi === 'bos_veya_kopyalanmis'
-                                      ? 'İçerik Eksik / TR Kopyası'
+                                      ? tStress('en_badge_missing_or_copied')
                                       : item.sorun_tipi === 'mukerrer_kanit'
-                                      ? 'Mükerrer Kanıt'
+                                      ? tStress('en_badge_duplicate')
                                       : item.sorun_tipi === 'parite_eksik_kanit'
-                                      ? 'İngilizceye Aktarılmamış Kanıt'
-                                      : 'Eksik Kanıt Bağlantısı'}
+                                      ? tStress('en_badge_not_transferred')
+                                      : tStress('en_badge_link_missing')}
                                   </span>
                                   <div className="min-w-0">
                                     <p className="text-xs font-semibold text-slate-800 truncate" title={item.aciklama}>
@@ -873,7 +873,7 @@ export default function IzlemePage() {
                                   </div>
                                   {isIstisna && (
                                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
-                                      İstisna Kabul Edildi
+                                      {tStress('exception_accepted')}
                                     </span>
                                   )}
                                 </div>
@@ -889,7 +889,7 @@ export default function IzlemePage() {
                                       })}
                                       className="text-xs font-semibold text-slate-500 hover:text-slate-800 px-2.5 py-1 rounded-lg hover:bg-slate-200 transition-colors"
                                     >
-                                      {isPending ? 'İşleniyor...' : 'Geri Al'}
+                                      {isPending ? tStress('processing') : tStress('undo')}
                                     </button>
                                   ) : (
                                     <button
@@ -901,10 +901,10 @@ export default function IzlemePage() {
                                         aktif: true,
                                       })}
                                       className="text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 shrink-0"
-                                      title="Bu kusuru inceledim, sorun yok / istisna olarak işaretle"
+                                      title={tStress('no_issue_tooltip_en')}
                                     >
                                       <CheckCircle className="w-3.5 h-3.5" />
-                                      {isPending ? 'Kaydediliyor...' : 'Sorun Yok'}
+                                      {isPending ? tStress('saving') : tStress('no_issue')}
                                     </button>
                                   )}
                                   <button
@@ -914,7 +914,7 @@ export default function IzlemePage() {
                                     }}
                                     className="text-xs font-bold text-purple-600 hover:text-purple-800 flex items-center gap-1 shrink-0 px-2.5 py-1 rounded-lg hover:bg-purple-50"
                                   >
-                                    ÖDR'ye Git <ChevronRight className="w-3.5 h-3.5" />
+                                    {tStress('go_to_odr')} <ChevronRight className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
                               </div>

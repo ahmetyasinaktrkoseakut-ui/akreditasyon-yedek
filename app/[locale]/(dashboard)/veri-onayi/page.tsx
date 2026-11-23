@@ -23,8 +23,10 @@ import { getAssignedLetter } from '@/lib/utils';
 import DOMPurify from 'dompurify';
 import { logAction } from '@/lib/logger';
 import { degerlendirTekOdr } from '@/lib/pukoStresTesti';
+import { useTranslations } from 'next-intl';
 
 export default function VeriOnayiPage() {
+  const tApproval = useTranslations('Approval');
   const { selectedPeriod } = usePeriod();
   const params = useParams();
   const locale = params?.locale || 'tr';
@@ -59,7 +61,7 @@ export default function VeriOnayiPage() {
       setIsLoading(true);
       
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Kullanıcı oturumu bulunamadı.");
+      if (!user) throw new Error(tApproval('session_not_found'));
 
       // 1. Koordinatörün başlığını bul
       const { data: coordData, error: coordError } = await supabase
@@ -69,7 +71,7 @@ export default function VeriOnayiPage() {
         .maybeSingle();
 
       if (coordError || !coordData) {
-        throw new Error("Bu sayfaya erişim yetkiniz yok veya atanmış bir başlığınız bulunmuyor.");
+        throw new Error(tApproval('no_access'));
       }
       
       setCoordinatorTopic(coordData.baslik);
@@ -82,7 +84,7 @@ export default function VeriOnayiPage() {
 
       if (!anaBaslikData) {
 
-        throw new Error(`Sorumlu olduğunuz '${coordData.baslik}' başlığı sistemdeki başlıklarla eşleşmedi.`);
+        throw new Error(tApproval('heading_mismatch', { topic: coordData.baslik }));
       }
 
       const expectedDbBaslik = anaBaslikData.baslik_adi;
@@ -133,7 +135,7 @@ export default function VeriOnayiPage() {
         
         return {
           ...rapor,
-          alt_olcutler: bulunanOlcut ? { kod: bulunanOlcut.kod, ad: olcutAdi || 'İsim Bulunamadı' } : null
+          alt_olcutler: bulunanOlcut ? { kod: bulunanOlcut.kod, ad: olcutAdi || tApproval('unnamed_criterion') } : null
         };
       });
 
@@ -141,7 +143,7 @@ export default function VeriOnayiPage() {
       
     } catch (error: any) {
       console.error("Veri çekme hatası:", error);
-      setMessage({ type: 'error', text: error.message || 'Veriler yüklenirken hata oluştu.' });
+      setMessage({ type: 'error', text: error.message || tApproval('load_error') });
     } finally {
       setIsLoading(false);
     }
@@ -158,7 +160,7 @@ export default function VeriOnayiPage() {
         .eq('id', id)
         .maybeSingle();
       if (reportFetchError) throw reportFetchError;
-      if (!report) throw new Error('Onaylanacak rapor bulunamadı.');
+      if (!report) throw new Error(tApproval('report_not_found'));
 
       const { data: currentStages, error: stagesFetchError } = await supabase
         .from('puko_degerlendirmeleri')
@@ -195,7 +197,7 @@ export default function VeriOnayiPage() {
         } catch (rollbackErr) {
           console.error("ÖDR telafi geri alma hatası:", rollbackErr);
         }
-        throw new Error(`PUKÖ tablosu güncellenemedi (${pukoError.message}). ÖDR durumu geri alındı.`);
+        throw new Error(tApproval('puko_update_error', { error: pukoError.message }));
       }
 
       // 4. Her iki güncelleme de başarılı olduktan sonra işlem logu ve bildirim
@@ -232,12 +234,12 @@ export default function VeriOnayiPage() {
       setPendingApproveReportId(null);
       setPendingApproveReportCode(null);
       setApproveWarningDetails([]);
-      setMessage({ type: 'success', text: 'Rapor ve ilgili PUKÖ kayıtları başarıyla onaylandı.' });
+      setMessage({ type: 'success', text: tApproval('approve_success') });
       await fetchInitialData();
 
     } catch (error: any) {
       console.error("Onay hatası:", error);
-      setMessage({ type: 'error', text: error.message || 'Onaylanırken hata oluştu.' });
+      setMessage({ type: 'error', text: error.message || tApproval('approve_error') });
     } finally {
       setIsSubmitting(false);
     }
@@ -250,7 +252,7 @@ export default function VeriOnayiPage() {
       // 1. Raporu al (alt_olcut_id, donem_id ve kanıt kontrolü için)
       const { data: report, error: reportFetchError } = await supabase.from('ozdegerlendirme_raporlari').select('*').eq('id', id).maybeSingle();
       if (reportFetchError) throw reportFetchError;
-      if (!report) throw new Error('Onaylanacak rapor bulunamadı.');
+      if (!report) throw new Error(tApproval('report_not_found'));
 
       const { data: stageRows, error: stageFetchError } = await supabase
         .from('puko_degerlendirmeleri')
@@ -279,7 +281,7 @@ export default function VeriOnayiPage() {
         return;
       }
 
-      if (!window.confirm('Bu raporu onaylamak istediğinize emin misiniz?')) {
+      if (!window.confirm(tApproval('approve_confirm'))) {
         setIsSubmitting(false);
         return;
       }
@@ -287,7 +289,7 @@ export default function VeriOnayiPage() {
       await executeApprove(id);
     } catch (error: any) {
       console.error("Onay kontrol hatası:", error);
-      setMessage({ type: 'error', text: 'Onay kontrolü sırasında hata oluştu.' });
+      setMessage({ type: 'error', text: tApproval('approve_check_error') });
       setIsSubmitting(false);
     }
   };
@@ -295,7 +297,7 @@ export default function VeriOnayiPage() {
   const handleReject = async () => {
     if (!selectedReportId || !rejectReason.trim()) return;
     if (rejectReason.trim().length < 5) {
-      setMessage({ type: 'error', text: 'Red gerekçesi en az 5 karakter olmalıdır.' });
+      setMessage({ type: 'error', text: tApproval('reject_reason_min') });
       return;
     }
     
@@ -313,17 +315,17 @@ export default function VeriOnayiPage() {
 
       const resData = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(resData?.error || 'Rapor reddedilirken bir hata oluştu.');
+        throw new Error(resData?.error || tApproval('reject_api_error'));
       }
 
-      setMessage({ type: 'success', text: 'Rapor reddedildi ve bildirimler güncellendi.' });
+      setMessage({ type: 'success', text: tApproval('reject_success') });
       await fetchInitialData(); // En güncel veriyi çekerek reddedilenlerin listeden düşmesini sağla
       setIsRejectModalOpen(false);
       setSelectedReportId(null);
       setRejectReason('');
     } catch (error: any) {
       console.error("Red hatası:", error);
-      setMessage({ type: 'error', text: 'Reddedilirken hata oluştu.' });
+      setMessage({ type: 'error', text: tApproval('reject_error') });
     } finally {
       setIsSubmitting(false);
     }
@@ -339,10 +341,10 @@ export default function VeriOnayiPage() {
       <div className="mb-8 border-b border-slate-200 pb-6">
         <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-3">
           <FileCheck className="w-7 h-7 text-blue-600" />
-          Veri Onayı {coordinatorTopic ? `(${coordinatorTopic})` : ''}
+          {tApproval('title')} {coordinatorTopic ? `(${coordinatorTopic})` : ''}
         </h2>
         <p className="text-slate-500 mt-2 text-sm max-w-2xl">
-          Birimlerden gelen veri girişlerini inceleyin. Uygun olanları onaylayın, eksik veya hatalı olanları red nedeni belirterek reddedin.
+          {tApproval('description')}
         </p>
       </div>
 
@@ -352,7 +354,7 @@ export default function VeriOnayiPage() {
         }`}>
           {message.type === 'success' ? <CheckCircle2 className="w-5 h-5 mt-0.5" /> : <AlertCircle className="w-5 h-5 mt-0.5" />}
           <div>
-            <h3 className="text-sm font-semibold">{message.type === 'success' ? 'Başarılı' : 'Hata'}</h3>
+            <h3 className="text-sm font-semibold">{message.type === 'success' ? tApproval('success_title') : tApproval('error_title')}</h3>
             <p className="text-sm opacity-90">{message.text}</p>
           </div>
         </div>
@@ -363,14 +365,14 @@ export default function VeriOnayiPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input 
             type="text" 
-            placeholder="Ölçüt ara..."
+            placeholder={tApproval('search_placeholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
           />
         </div>
         <div className="text-sm text-slate-500 font-medium">
-          Toplam {filteredReports.length} bekleyen veri
+          {tApproval('total_pending', { count: filteredReports.length })}
         </div>
       </div>
 
@@ -381,7 +383,7 @@ export default function VeriOnayiPage() {
       ) : filteredReports.length === 0 ? (
         <div className="bg-slate-50 border-2 border-dashed border-slate-200 p-12 rounded-2xl text-center">
           <CheckCircle2 className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-          <p className="text-slate-500 font-medium">Onay bekleyen veri girişi bulunmuyor.</p>
+          <p className="text-slate-500 font-medium">{tApproval('empty_pending')}</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -398,7 +400,7 @@ export default function VeriOnayiPage() {
                     </span>
                   </div>
                   <Link href={`/${locale}/olcutler/${report.alt_olcut_id}/ozdegerlendirme`} className="font-semibold text-lg text-blue-600 hover:text-blue-800 hover:underline transition-colors mt-1 block">
-                    {report.alt_olcutler?.ad || report.alt_olcutler?.baslik || report.alt_olcutler?.isim || report.alt_olcutler?.title || 'İsim Bulunamadı'}
+                    {report.alt_olcutler?.ad || report.alt_olcutler?.baslik || report.alt_olcutler?.isim || report.alt_olcutler?.title || tApproval('unnamed_criterion')}
                   </Link>
                 </div>
                 
@@ -408,7 +410,7 @@ export default function VeriOnayiPage() {
                     className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition-colors border"
                   >
                     <Eye className="w-4 h-4" />
-                    {expandedReport === report.id ? 'Gizle' : 'İncele'}
+                    {expandedReport === report.id ? tApproval('hide') : tApproval('review')}
                     {expandedReport === report.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
                   
@@ -418,7 +420,7 @@ export default function VeriOnayiPage() {
                     className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors shadow-sm"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    Onayla
+                    {tApproval('approve')}
                   </button>
                   
                   <button
@@ -430,7 +432,7 @@ export default function VeriOnayiPage() {
                     className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors shadow-sm"
                   >
                     <XCircle className="w-4 h-4" />
-                    Reddet
+                    {tApproval('reject')}
                   </button>
                 </div>
               </div>
@@ -438,17 +440,17 @@ export default function VeriOnayiPage() {
               {expandedReport === report.id && (
                 <div className="px-5 pb-5 pt-2 border-t border-slate-100 animate-in slide-in-from-top-2 duration-300">
                   <div className="bg-slate-50 p-4 rounded-xl prose prose-sm max-w-none text-slate-700" 
-                       dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(report.icerik || '<p class="text-slate-400 italic">İçerik boş.</p>') }} 
+                       dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(report.icerik || `<p class="text-slate-400 italic">${tApproval('empty_content')}</p>`) }} 
                   />
                   {report.kanitlar && report.kanitlar.length > 0 && (
                     <div className="mt-4">
-                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Kanıtlar</h4>
+                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{tApproval('evidences')}</h4>
                       <div className="flex flex-wrap gap-2">
                         {report.kanitlar.map((k: any, i: number) => (
                           <a key={i} href={k.url} target="_blank" rel="noopener noreferrer" 
                              className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm">
                             <MessageSquare className="w-3.5 h-3.5" />
-                            {k.ad || 'Kanıt'}
+                            {k.ad || tApproval('evidence_fallback')}
                           </a>
                         ))}
                       </div>
@@ -468,7 +470,7 @@ export default function VeriOnayiPage() {
             <div className="px-6 py-5 border-b border-amber-100 flex items-center justify-between bg-amber-50/70">
               <h3 className="font-bold text-amber-900 flex items-center gap-2">
                 <ShieldAlert className="w-5 h-5 text-amber-600" />
-                ÖDR / PUKÖ Bütünlük Uyarısı
+                {tApproval('integrity_warning_title')}
               </h3>
               <button 
                 onClick={() => {
@@ -483,7 +485,7 @@ export default function VeriOnayiPage() {
             </div>
             <div className="p-6 space-y-4">
               <p className="text-sm text-slate-700 leading-relaxed">
-                Bu raporda ({pendingApproveReportCode}) aşağıdaki uyarılar tespit edilmiştir:
+                {tApproval('integrity_warning_desc', { code: pendingApproveReportCode || '' })}
               </p>
               <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-4 max-h-56 overflow-y-auto space-y-2 text-xs text-amber-900">
                 {approveWarningDetails.map((warn, idx) => (
@@ -494,7 +496,7 @@ export default function VeriOnayiPage() {
                 ))}
               </div>
               <p className="text-xs text-slate-500 italic">
-                Raporu yine de onaylamak istiyorsanız &ldquo;İstisna Olarak Onayla&rdquo; butonuna tıklayınız.
+                {tApproval('integrity_warning_hint')}
               </p>
             </div>
             <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
@@ -508,7 +510,7 @@ export default function VeriOnayiPage() {
                 disabled={isSubmitting}
                 className="px-5 py-2.5 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors"
               >
-                Vazgeç
+                {tApproval('cancel')}
               </button>
               <button
                 type="button"
@@ -521,7 +523,7 @@ export default function VeriOnayiPage() {
                 className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-amber-600 border border-amber-600 rounded-xl hover:bg-amber-700 transition-colors shadow-sm disabled:opacity-50"
               >
                 {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                Uyarıları İnceledim, İstisna Olarak Onayla
+                {tApproval('approve_as_exception')}
               </button>
             </div>
           </div>
@@ -535,16 +537,16 @@ export default function VeriOnayiPage() {
             <div className="p-6">
               <h3 className="text-lg font-bold text-slate-800 mb-2 flex items-center gap-2">
                 <XCircle className="w-6 h-6 text-red-600" />
-                Veriyi Reddet
+                {tApproval('reject_title')}
               </h3>
               <p className="text-slate-500 text-sm mb-4">
-                Lütfen bu veriyi neden reddettiğinizi açıklayın. Bu açıklama ilgili birim kullanıcısına iletilecektir.
+                {tApproval('reject_desc')}
               </p>
               
               <textarea
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Örn: Kanıtlar yetersiz, açıklama metni güncellenmeli..."
+                placeholder={tApproval('reject_placeholder')}
                 className="w-full h-32 p-3 border rounded-xl text-sm focus:ring-2 focus:ring-red-500 outline-none resize-none"
               />
             </div>
@@ -558,14 +560,14 @@ export default function VeriOnayiPage() {
                 disabled={isSubmitting}
                 className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
               >
-                İptal
+                {tApproval('reject_cancel')}
               </button>
               <button
                 onClick={handleReject}
                 disabled={isSubmitting || !rejectReason.trim()}
                 className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors shadow-md disabled:opacity-50"
               >
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Reddet'}
+                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : tApproval('reject_submit')}
               </button>
             </div>
           </div>

@@ -246,13 +246,13 @@ export default function OlcutlerPage() {
 
       {userRole === 'Beklemede' ? (
         <div className="p-12 bg-indigo-50 border border-indigo-200 rounded-3xl text-center max-w-2xl mx-auto shadow-sm">
-          <p className="text-indigo-900 font-bold text-lg">Hesabınız Başarıyla Oluşturuldu</p>
-          <p className="text-slate-600 mt-2 text-sm font-medium">Hesabınız şu an bekleme durumundadır. Bir yönetici size bir ölçüt atadığında, sistemdeki birim sorumlusu yetkileriniz otomatik olarak aktifleşecektir.</p>
+          <p className="text-indigo-900 font-bold text-lg">{t('account_created_title')}</p>
+          <p className="text-slate-600 mt-2 text-sm font-medium">{t('account_created_desc')}</p>
         </div>
       ) : (
         olcutler.length === 0 && !errorStatus && (
           <div className="p-10 bg-amber-50 border border-amber-200 rounded-3xl text-center">
-            <p className="text-amber-800 font-bold text-lg italic">Şu an için atanmış bir ölçütünüz bulunmuyor.</p>
+            <p className="text-amber-800 font-bold text-lg italic">{t('no_assigned_criteria')}</p>
           </div>
         )
       )}
@@ -295,7 +295,7 @@ export default function OlcutlerPage() {
                             ) : (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium">
                                 <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                                <span>Atanmamış</span>
+                                <span>{t('unassigned_badge')}</span>
                               </span>
                             )}
                           </div>

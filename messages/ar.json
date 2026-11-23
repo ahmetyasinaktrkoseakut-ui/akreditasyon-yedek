@@ -23,7 +23,9 @@
     "coordinators": "المنسقون",
     "syllabus_data": "بيانات الخطط",
     "audit_log": "سجل الأنشطة",
-    "external_evidence": "الأدلة الخارجية"
+    "external_evidence": "الأدلة الخارجية",
+    "support": "الاقتراحات والدعم",
+    "uni_puko": "جودة الجامعة (PDCA)"
   },
   "Common": {
     "save": "حفظ",
@@ -37,7 +39,8 @@
     "unknown_user": "مستخدم غير معروف",
     "unknown_error": "خطأ غير معروف",
     "delete_success": "تم الحذف بنجاح",
-    "delete_error": "حدث خطأ أثناء الحذف"
+    "delete_error": "حدث خطأ أثناء الحذف",
+    "delete_confirm": "هل أنت متأكد من الحذف؟"
   },
   "Announcements": {
     "title": "الإعلانات",
@@ -122,7 +125,11 @@
     "description": "إدارة المعايير التي سيتم تقييمها للاعتماد المؤسسي.",
     "sub_criteria_count": "يوجد {count} معيار فرعي",
     "group": "مجموعة {harf}",
-    "viewDetails": "عرض التفاصيل"
+    "viewDetails": "عرض التفاصيل",
+    "account_created_title": "تم إنشاء حسابك بنجاح",
+    "account_created_desc": "حسابك قيد الانتظار حاليًا. بمجرد أن يعين لك المسؤول معيارًا، سيتم تفعيل صلاحياتك تلقائيًا.",
+    "no_assigned_criteria": "لا توجد معايير معينة لك حاليًا.",
+    "unassigned_badge": "غير معيّن"
   },
   "StepPanel": {
     "kalite_el_kitabi_title": "1. دليل الجودة",
@@ -180,7 +187,8 @@
     "unknown_criterion": "معيار غير معروف",
     "no_criterion_name": "لا يوجد اسم للمعيار",
     "export_excel": "تحميل بصيغة إكسل (.xls)",
-    "report_date": "التاريخ:"
+    "report_date": "التاريخ:",
+    "risk_analysis_placeholder": "اكتب تحليل المخاطر والإجراءات الوقائية..."
   },
   "Reports": {
     "title": "تقرير المؤسسة العالمي",
@@ -357,7 +365,8 @@
     "report_saved_notification": "تم إعداد تقرير التقييم الذاتي للمعيار. (المعيار {code})",
     "stage_header": "مرحلة {stage}",
     "maturity_score_header": "درجة مستوى النضج:",
-    "merge_data_description": "دمج البيانات لإنشاء تقرير التقييم الذاتي الخاص بك."
+    "merge_data_description": "دمج البيانات لإنشاء تقرير التقييم الذاتي الخاص بك.",
+    "upload_error": "حدث خطأ أثناء تحميل الملف."
   },
   "Maturity": {
     "title": "درجة نضج العملية",
@@ -446,7 +455,8 @@
       "footer": "تم إنشاء هذا المحتوى باستخدام نظام BKY."
     },
     "survey_title": "عنوان الاستبيان",
-    "question_form": "نموذج الأسئلة"
+    "question_form": "نموذج الأسئلة",
+    "delete_survey_confirm": "هل أنت متأكد أنك تريد حذف الاستبيان \"{baslik}\" نهائيًا؟"
   },
   "Documents": {
     "title": "إدارة المستندات",
@@ -529,7 +539,9 @@
     "assign_success": "تم تعيين المنسق بنجاح.",
     "assign_error": "حدث خطأ أثناء حفظ التعيين:",
     "select_user_topic_error": "يرجى تحديد المستخدم والموضوع.",
-    "fetch_error": "حدث خطأ أثناء تحميل البيانات:"
+    "fetch_error": "حدث خطأ أثناء تحميل البيانات:",
+    "email_not_found": "لم يتم العثور على مستخدم بهذا البريد الإلكتروني.",
+    "remove_assignment": "إزالة التعيين"
   },
   "PeriodManagement": {
     "title": "إدارة الفترات / السنوات",
@@ -643,10 +655,43 @@
     "evidence_missing": "لم يتم رفع وثيقة الإثبات.",
     "citation_missing": "لم يتم الاستشهاد بالأدلة المرفوعة في نص التوضيح.",
     "puko_incomplete": "لم يتم اعتماد جميع مراحل PUKÖ الخمس بالكامل.",
-    "tab_english_odr": "عيوب تقرير التقييم الذاتي بالإنجليزية",
+    "tab_english_odr": "3. أخطاء التقرير الإنجليزي",
     "english_odr_missing_or_copied": "تقرير التقييم الذاتي بالإنجليزية مفقود أو تم نسخ النص التركي",
     "english_odr_evidence_missing": "رابط الدليل مفقود في تقرير التقييم الذاتي بالإنجليزية",
-    "go_to_odr": "الانتقال إلى التقييم الذاتي"
+    "go_to_odr": "الانتقال إلى التقييم الذاتي",
+    "modal_title": "اختبار إجهاد الاعتماد (تحليل تكامل PDCA)",
+    "selected_period": "الفترة المحددة",
+    "active_risks": "المخاطر/المشكلات النشطة",
+    "exception_accepted_count": "({count} استثناءات مقبولة)",
+    "show_exceptions": "إظهار الاستثناءات ({count})",
+    "tab_unmapped_criteria": "1. المعايير غير المدرجة في التقرير",
+    "tab_missing_evidence": "2. أدلة موجودة في المراحل ومفقودة في التقرير",
+    "all_clear_title": "ممتاز! لم يتم العثور على أي أخطاء تكامل",
+    "all_clear_desc": "تم تضمين جميع المعايير في التقرير، وربط جميع أدلة PDCA دون مراحل فارغة.",
+    "tab_odryok_empty": "تم إدراج جميع المعايير في تقرير التقييم الذاتي.",
+    "tab_kanitfark_empty": "جميع الأدلة في المراحل موجودة في التقرير.",
+    "tab_en_empty": "لم يتم العثور على أي أخطاء في محتوى التقرير الإنجليزي أو روابط الأدلة.",
+    "evidence_count": "{count} أدلة متوفرة",
+    "no_evidence": "لا يوجد دليل",
+    "exception_accepted": "تم قبول الاستثناء",
+    "undo": "تراجع",
+    "processing": "جاري المعالجة...",
+    "saving": "جاري الحفظ...",
+    "no_issue": "لا توجد مشكلة",
+    "no_issue_tooltip_odr": "تمت المراجعة، تحديد كـ لا توجد مشكلة",
+    "no_issue_tooltip_evidence": "تحديد نقص هذا الدليل في التقرير كاستثناء",
+    "no_issue_tooltip_en": "تمت المراجعة، تحديد هذه المشكلة كاستثناء",
+    "missing_evidence_prefix": "دليل مفقود: {name}",
+    "en_badge_missing_or_copied": "محتوى مفقود / منسوخ من التركية",
+    "en_badge_duplicate": "دليل مكرر",
+    "en_badge_not_transferred": "دليل غير منقول للإنجليزية",
+    "en_badge_link_missing": "رابط دليل مفقود",
+    "db_query_error": "خطأ في استعلام قاعدة البيانات",
+    "test_run_failed": "تعذر تشغيل اختبار الإجهاد: {error}",
+    "test_run_error": "حدث خطأ أثناء تشغيل اختبار الإجهاد",
+    "exception_accepted_toast": "تم قبول الاستثناء وإزالة التحذير من القائمة.",
+    "exception_reverted_toast": "تم التراجع عن الاستثناء وسيظهر التحذير مجددًا.",
+    "exception_save_error": "تعذر حفظ الاستثناء"
   },
   "PresentationMode": {
     "enter": "وضع العرض التقديمي",
@@ -685,5 +730,46 @@
     "delete_failed": "تعذر حذف الملف من التخزين. تم إلغاء العملية.",
     "delete_success": "تم حذف الوثيقة من التخزين والأرشيف.",
     "upload_success": "تم رفع الوثيقة بنجاح."
+  },
+  "Approval": {
+    "title": "اعتماد البيانات",
+    "description": "راجع البيانات الواردة من الوحدات. اعتمد التقارير المناسبة، أو ارفض غير المكتملة مع ذكر السبب.",
+    "success_title": "تم بنجاح",
+    "error_title": "خطأ",
+    "search_placeholder": "ابحث عن معيار...",
+    "total_pending": "إجمالي {count} بانتظار الاعتماد",
+    "empty_pending": "لا توجد بيانات بانتظار الاعتماد.",
+    "unnamed_criterion": "الاسم غير موجود",
+    "hide": "إخفاء",
+    "review": "مراجعة",
+    "approve": "اعتماد",
+    "reject": "رفض",
+    "empty_content": "المحتوى فارغ.",
+    "evidences": "الأدلة",
+    "evidence_fallback": "دليل",
+    "integrity_warning_title": "تحذير تكامل التقرير و PDCA",
+    "integrity_warning_desc": "تم رصد التحذيرات التالية في هذا التقرير ({code}):",
+    "integrity_warning_hint": "إذا كنت لا تزال ترغب في الاعتماد، انقر على \"اعتماد كاستثناء\".",
+    "cancel": "إلغاء",
+    "approve_as_exception": "تمت مراجعة التحذيرات، اعتماد كاستثناء",
+    "reject_title": "رفض البيانات",
+    "reject_desc": "يرجى توضيح سبب رفض هذه البيانات. سيتم إرسال الملاحظة إلى مسؤول الوحدة.",
+    "reject_placeholder": "مثال: الأدلة غير كافية، يجب تحديث الوصف...",
+    "reject_cancel": "إلغاء",
+    "reject_submit": "رفض",
+    "session_not_found": "لم يتم العثور على جلسة المستخدم.",
+    "no_access": "ليس لديك صلاحية الوصول إلى هذه الصفحة أو لم يُعيّن لك قسم.",
+    "heading_mismatch": "القسم المسؤول عنه '{topic}' لم يطابق أقسام النظام.",
+    "load_error": "حدث خطأ أثناء تحميل البيانات.",
+    "report_not_found": "لم يتم العثور على التقرير المطلوب اعتماده.",
+    "puko_update_error": "تعذر تحديث جدول PDCA ({error}). تم التراجع عن حالة التقرير.",
+    "approve_confirm": "هل أنت متأكد من أنك تريد اعتماد هذا التقرير؟",
+    "approve_success": "تم اعتماد التقرير وسجلات PDCA بنجاح.",
+    "approve_error": "حدث خطأ أثناء الاعتماد.",
+    "approve_check_error": "حدث خطأ أثناء التحقق من الاعتماد.",
+    "reject_reason_min": "يجب أن يكون سبب الرفض 5 أحرف على الأقل.",
+    "reject_api_error": "حدث خطأ أثناء رفض التقرير.",
+    "reject_success": "تم رفض التقرير وتحديث الإشعارات.",
+    "reject_error": "حدث خطأ أثناء الرفض."
   }
 }
