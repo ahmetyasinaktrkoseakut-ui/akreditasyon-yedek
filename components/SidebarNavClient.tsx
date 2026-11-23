@@ -2,7 +2,7 @@
 
 import { Link, usePathname } from '@/i18n/routing';
 import { useTranslations } from 'next-intl';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { 
   Home, 
@@ -21,12 +21,226 @@ import {
 import { LogoutButton } from './LogoutButton';
 import { Users, FileCheck, ClipboardCheck, History, Inbox } from 'lucide-react';
 
-export default function SidebarNavClient({ isAdmin, isObserver = false, userId, hasAssignment, isCoordinator }: { isAdmin: boolean, isObserver?: boolean, userId: string, hasAssignment: boolean, isCoordinator?: boolean }) {
+type SidebarAuthState = {
+  userId: string;
+  isAdmin: boolean;
+  isObserver: boolean;
+  hasAssignment: boolean;
+  isCoordinator: boolean;
+};
+
+export default function SidebarNavClient({
+  isAdmin: initialIsAdmin,
+  isObserver: initialIsObserver = false,
+  userId: initialUserId,
+  hasAssignment: initialHasAssignment,
+  isCoordinator: initialIsCoordinator = false,
+}: {
+  isAdmin: boolean;
+  isObserver?: boolean;
+  userId: string;
+  hasAssignment: boolean;
+  isCoordinator?: boolean;
+}) {
   const pathname = usePathname();
   const t = useTranslations('Navigation');
   const tAnn = useTranslations('Announcements');
   const tQM = useTranslations('QualityManual');
   const [unreadCount, setUnreadCount] = useState(0);
+  const [clientAuthState, setClientAuthState] = useState<SidebarAuthState | null>(null);
+
+  const serverHasPermissions = Boolean(
+    initialIsAdmin || initialIsObserver || initialHasAssignment || initialIsCoordinator
+  );
+  const effectiveAuth: SidebarAuthState = clientAuthState ?? {
+    userId: initialUserId || '',
+    isAdmin: Boolean(initialIsAdmin),
+    isObserver: Boolean(initialIsObserver),
+    hasAssignment: Boolean(initialHasAssignment),
+    isCoordinator: Boolean(initialIsCoordinator),
+  };
+  const { userId, isAdmin, isObserver, hasAssignment, isCoordinator } = effectiveAuth;
+
+  const isMountedRef = useRef(true);
+  const inFlightRef = useRef(false);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queuedRefreshRef = useRef<{ hintUserId?: string; force: boolean } | null>(null);
+  const lastLoadedUserIdRef = useRef<string | null>(
+    serverHasPermissions && initialUserId ? initialUserId : null
+  );
+  const hasLoadedForUserRef = useRef<boolean>(Boolean(serverHasPermissions && initialUserId));
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    const clearScheduledRefresh = () => {
+      if (refreshTimerRef.current !== null) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
+
+    const scheduleRefresh = (hintUserId?: string, force = false) => {
+      clearScheduledRefresh();
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null;
+        void loadClientPermissions(hintUserId, force);
+      }, 0);
+    };
+
+    const loadClientPermissions = async (hintUserId?: string, force = false) => {
+      if (!isMountedRef.current) return;
+
+      if (
+        !force &&
+        hintUserId &&
+        hasLoadedForUserRef.current &&
+        lastLoadedUserIdRef.current === hintUserId
+      ) {
+        return;
+      }
+
+      if (inFlightRef.current) {
+        queuedRefreshRef.current = {
+          hintUserId: hintUserId ?? queuedRefreshRef.current?.hintUserId,
+          force: force || Boolean(queuedRefreshRef.current?.force),
+        };
+        return;
+      }
+
+      inFlightRef.current = true;
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (!isMountedRef.current) return;
+        if (userError) {
+          console.error('Sidebar kullanıcı doğrulama hatası:', userError);
+          return;
+        }
+
+        const targetUserId = user?.id || '';
+        if (!targetUserId) {
+          lastLoadedUserIdRef.current = null;
+          hasLoadedForUserRef.current = false;
+          setClientAuthState({
+            userId: '',
+            isAdmin: false,
+            isObserver: false,
+            hasAssignment: false,
+            isCoordinator: false,
+          });
+          setUnreadCount(0);
+          return;
+        }
+
+        if (
+          !force &&
+          hasLoadedForUserRef.current &&
+          lastLoadedUserIdRef.current === targetUserId
+        ) {
+          return;
+        }
+
+        const [profileRes, assignmentRes, coordinatorRes] = await Promise.all([
+          supabase
+            .from('profiller')
+            .select('rol')
+            .eq('id', targetUserId)
+            .maybeSingle(),
+          supabase
+            .from('kullanici_olcut_atamalari')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', targetUserId),
+          supabase
+            .from('baslik_koordinatorleri')
+            .select('*', { count: 'exact', head: true })
+            .eq('kullanici_id', targetUserId),
+        ]);
+
+        if (!isMountedRef.current) return;
+
+        const hasQueryError = Boolean(
+          profileRes.error || assignmentRes.error || coordinatorRes.error
+        );
+        if (hasQueryError) {
+          console.error('Sidebar yetki sorgusu hatası:', {
+            profileError: profileRes.error,
+            assignmentError: assignmentRes.error,
+            coordinatorError: coordinatorRes.error,
+          });
+        }
+
+        const role = (profileRes.data?.rol || '').toLowerCase();
+        const nextIsAdmin =
+          role.includes('yonetici') || role.includes('yönetici') || role.includes('admin');
+        const nextIsObserver =
+          role.includes('gözlemci') || role.includes('gozlemci');
+        const nextHasAssignment = (assignmentRes.count || 0) > 0;
+        const nextIsCoordinator = (coordinatorRes.count || 0) > 0;
+
+        lastLoadedUserIdRef.current = targetUserId;
+        hasLoadedForUserRef.current = !hasQueryError;
+
+        setClientAuthState({
+          userId: targetUserId,
+          isAdmin: nextIsAdmin,
+          isObserver: nextIsObserver,
+          hasAssignment: nextHasAssignment,
+          isCoordinator: nextIsCoordinator,
+        });
+      } catch (err) {
+        console.error('Sidebar yetki kontrolü hatası:', err);
+      } finally {
+        inFlightRef.current = false;
+        const queued = queuedRefreshRef.current;
+        if (queued && isMountedRef.current) {
+          queuedRefreshRef.current = null;
+          scheduleRefresh(queued.hintUserId, queued.force);
+        }
+      }
+    };
+
+    if (!initialUserId || !serverHasPermissions) {
+      scheduleRefresh(initialUserId || undefined, false);
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMountedRef.current) return;
+
+      if (event === 'SIGNED_OUT') {
+        clearScheduledRefresh();
+        queuedRefreshRef.current = null;
+        lastLoadedUserIdRef.current = null;
+        hasLoadedForUserRef.current = false;
+        setClientAuthState({
+          userId: '',
+          isAdmin: false,
+          isObserver: false,
+          hasAssignment: false,
+          isCoordinator: false,
+        });
+        setUnreadCount(0);
+        return;
+      }
+
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        const nextUserId = session?.user?.id;
+        const shouldRefresh =
+          event === 'USER_UPDATED' ||
+          !hasLoadedForUserRef.current ||
+          (Boolean(nextUserId) && lastLoadedUserIdRef.current !== nextUserId);
+        if (shouldRefresh) {
+          scheduleRefresh(nextUserId, true);
+        }
+      }
+    });
+
+    return () => {
+      isMountedRef.current = false;
+      clearScheduledRefresh();
+      queuedRefreshRef.current = null;
+      subscription.unsubscribe();
+    };
+  }, [initialUserId, serverHasPermissions]);
 
   useEffect(() => {
     if (!userId) return;
