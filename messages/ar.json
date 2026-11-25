@@ -631,17 +631,6 @@
       }
     }
   },
-  "Cockpit": {
-    "title": "لوحة جاهزية الاعتماد",
-    "general_readiness": "نسبة الجاهزية العامة",
-    "completed_criteria": "المعايير الفرعية المكتملة",
-    "active_period": "الفترة المحددة",
-    "header_progress": "التقدم حسب التصنيف",
-    "scope_all": "مجموعة المعايير المؤسسية",
-    "scope_assigned": "المعايير المسندة إليك",
-    "scope_category": "نطاق التصنيف: {letter}",
-    "criteria_unit": "معيار"
-  },
   "StressTest": {
     "title": "اختبار الإجهاد لـ PUKÖ",
     "description": "يتحقق من سلامة الأدلة والاستشهادات والمخاطر المنهجية خلال الفترة.",
@@ -692,12 +681,6 @@
     "exception_accepted_toast": "تم قبول الاستثناء وإزالة التحذير من القائمة.",
     "exception_reverted_toast": "تم التراجع عن الاستثناء وسيظهر التحذير مجددًا.",
     "exception_save_error": "تعذر حفظ الاستثناء"
-  },
-  "PresentationMode": {
-    "enter": "وضع العرض التقديمي",
-    "exit": "الخروج من وضع العرض",
-    "fullscreen": "عرض ملء الشاشة",
-    "active": "وضع العرض نشط"
   },
   "ExamArchive": {
     "title": "أرشيف الامتحانات والتقييم",

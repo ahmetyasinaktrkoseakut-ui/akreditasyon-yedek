@@ -631,17 +631,6 @@
       }
     }
   },
-  "Cockpit": {
-    "title": "Akreditasyon Hazırlık Kokpiti",
-    "general_readiness": "Genel Hazırlık Oranı",
-    "completed_criteria": "Tamamlanan Alt Ölçüt",
-    "active_period": "Seçili Dönem",
-    "header_progress": "Başlık Bazlı İlerleme",
-    "scope_all": "Kurumsal Ölçüt Kümesi",
-    "scope_assigned": "Atanan Ölçütleriniz",
-    "scope_category": "Başlık Kapsamı: {letter}",
-    "criteria_unit": "ölçüt"
-  },
   "StressTest": {
     "title": "PUKÖ Stres Testi",
     "description": "Dönem verilerindeki kanıt-atıf bütünlüğünü ve metodolojik riskleri denetler.",
@@ -692,12 +681,6 @@
     "exception_accepted_toast": "İstisna kabul edildi. Uyarı listeden düşürüldü.",
     "exception_reverted_toast": "İstisna geri alındı. Uyarı tekrar listelenecektir.",
     "exception_save_error": "İstisna kaydedilemedi"
-  },
-  "PresentationMode": {
-    "enter": "Sunum Modu",
-    "exit": "Sunum Modundan Çık",
-    "fullscreen": "Tam Ekran Görünüm",
-    "active": "Sunum Modu Aktif"
   },
   "ExamArchive": {
     "title": "Sınav ve Değerlendirme Arşivi",

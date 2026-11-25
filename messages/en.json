@@ -631,17 +631,6 @@
       }
     }
   },
-  "Cockpit": {
-    "title": "Accreditation Readiness Cockpit",
-    "general_readiness": "Overall Readiness Rate",
-    "completed_criteria": "Completed Sub-Criteria",
-    "active_period": "Selected Period",
-    "header_progress": "Category Progress",
-    "scope_all": "Institutional Criteria Set",
-    "scope_assigned": "Your Assigned Criteria",
-    "scope_category": "Category Scope: {letter}",
-    "criteria_unit": "criteria"
-  },
   "StressTest": {
     "title": "PDCA Stress Test",
     "description": "Validates evidence-citation integrity and methodological risks across the period.",
@@ -692,12 +681,6 @@
     "exception_accepted_toast": "Exception accepted. Warning removed from the active list.",
     "exception_reverted_toast": "Exception reverted. Warning will be listed again.",
     "exception_save_error": "Failed to save exception"
-  },
-  "PresentationMode": {
-    "enter": "Presentation Mode",
-    "exit": "Exit Presentation Mode",
-    "fullscreen": "Fullscreen View",
-    "active": "Presentation Mode Active"
   },
   "ExamArchive": {
     "title": "Exam & Evaluation Archive",
