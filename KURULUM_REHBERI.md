@@ -35,3 +35,11 @@ Sistemi yeni bir kurum için (örneğin Urfa İlahiyat Fakültesi) sıfırdan ku
 3. Kendi e-postanızın olduğu satırdaki `rol` değerini **`Beklemede`** durumundan **`Yonetici`** olarak değiştirin.
 
 Tebrikler! Sisteminiz Urfa İlahiyat Fakültesi için tamamen kullanıma hazırdır. ⚡
+---
+
+### 5. NOT: Alan Adı (Domain) Değişikliği Durumunda Eski Kanıt Bağlantıları
+- Sıfır kurulumda tüm yeni PUKÖ ve ÖDR kanıt bağlantıları `/api/storage/<bucket>/<dosya>` biçiminde **domain bağımsız** olarak saklanır; alan adı değişse de iç modalda açılmaya devam eder.
+- Kurumun alan adı ileride değişirse ve önceki kayıtlarda eski tam alan adıyla yazılmış kanıt bağlantıları kalmışsa, yeni kurulumun `.env.local` ve Vercel Ortam Değişkenleri bölümüne eski origin listesini virgülle ayırarak eklemeniz (veya `lib/legacyOrigins.ts` içine tanımlamanız) yeterlidir:
+  ```env
+  NEXT_PUBLIC_LEGACY_APP_ORIGINS=https://eski-domain.ornek.edu.tr
+  ```

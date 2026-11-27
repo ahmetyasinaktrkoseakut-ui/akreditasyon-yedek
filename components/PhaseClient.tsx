@@ -10,7 +10,7 @@ import { logAction } from '@/lib/logger';
 import StepPanel from '@/components/StepPanel';
 import RichTextEditor, { RichTextEditorRef } from '@/components/RichTextEditor';
 import { getLocalizedField } from '@/lib/i18n-utils';
-import { validateFileSize, getAssignedLetter, toProxyStorageUrl } from '@/lib/utils';
+import { validateFileSize, getAssignedLetter, toProxyStorageUrl, sanitizeReportHtmlLinks } from '@/lib/utils';
 import { validateUploadedFile } from '@/lib/fileValidation';
 import { usePeriod } from '@/contexts/PeriodContext';
 import EvidenceAnnotatorModal from '@/components/EvidenceAnnotatorModal';
@@ -83,16 +83,25 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
   // Stres Testi Bilgilendirici Uyarı State'i
   const [stressWarningMessage, setStressWarningMessage] = useState<string | null>(null);
 
+  const normalizeEvidenceDoc = (d: any) => ({
+    ...d,
+    ...(d?.url ? { url: toProxyStorageUrl(d.url, '') } : {}),
+    ...(d?.annotated_url ? { annotated_url: toProxyStorageUrl(d.annotated_url, '') } : {}),
+  });
+
   // Direct fresh database persistence to prevent React stale closure bugs
   const persistData = async (updatedDocs: any[], updatedAciklama: string) => {
     if (!selectedPeriod) return;
+
+    const cleanAciklama = sanitizeReportHtmlLinks(updatedAciklama || '', '');
+    const normalizedDocs = (updatedDocs || []).map(normalizeEvidenceDoc);
 
     const upsertData: Record<string, any> = {
       alt_olcut_id: resolvedParams.id,
       puko_asamasi: phaseId,
       donem_id: selectedPeriod.id,
-      aciklama: updatedAciklama,
-      kanit_dosyalari: updatedDocs,
+      aciklama: cleanAciklama,
+      kanit_dosyalari: normalizedDocs,
       durum: onayDurumu || 'Taslak',
     };
 
@@ -142,7 +151,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
 
         // 2. Secondary: Match by normalized href (stripping query & #page hash)
         if (!anchor && d.url) {
-          const normalizeUrl = (u: string) => u.split('#')[0].split('?')[0];
+          const normalizeUrl = (u: string) => toProxyStorageUrl(u.split('#')[0].split('?')[0], '');
           const targetBaseUrl = normalizeUrl(d.url);
           const targetAnnoBaseUrl = d.annotated_url ? normalizeUrl(d.annotated_url) : null;
 
@@ -159,6 +168,10 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
         if (anchor) {
           if (d.evidence_id && !anchor.getAttribute('data-evidence-id')) {
             anchor.setAttribute('data-evidence-id', d.evidence_id);
+          }
+          const curHref = anchor.getAttribute('href') || d.url;
+          if (curHref) {
+            anchor.setAttribute('href', toProxyStorageUrl(curHref, ''));
           }
           anchor.textContent = targetText;
         }
@@ -204,11 +217,11 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
           const updatedRowDocs = row.kanit_dosyalari.map((doc: any) => {
             const evId = doc.evidence_id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ev_${Math.random().toString(36).substring(2, 9)}`);
             const assignedNo = globalCounter++;
-            return { ...doc, evidence_id: evId, evidence_no: assignedNo };
+            return normalizeEvidenceDoc({ ...doc, evidence_id: evId, evidence_no: assignedNo });
           });
 
           // Use DOMParser to update HTML link texts cleanly
-          const updatedHtml = updateHtmlEvidenceLinks(row.aciklama || '', updatedRowDocs);
+          const updatedHtml = sanitizeReportHtmlLinks(updateHtmlEvidenceLinks(row.aciklama || '', updatedRowDocs), '');
 
           rowsToUpdate.push({
             id: row.id,
@@ -260,22 +273,23 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
 
   const handleSaveAnnotatedDoc = async (updatedDoc: any, oldUrlToDelete?: string) => {
     if (selectedDocForAnnotation !== null) {
+      const normalizedDoc = normalizeEvidenceDoc(updatedDoc);
       const oldDoc = dokumanlar[selectedDocForAnnotation.index];
       const newDocs = [...dokumanlar];
-      newDocs[selectedDocForAnnotation.index] = updatedDoc;
+      newDocs[selectedDocForAnnotation.index] = normalizedDoc;
 
       let freshAciklama = aciklama;
-      if (oldDoc?.url && updatedDoc?.url && oldDoc.url !== updatedDoc.url && typeof window !== 'undefined' && window.DOMParser) {
+      if (oldDoc?.url && normalizedDoc?.url && typeof window !== 'undefined' && window.DOMParser) {
         try {
           const parser = new DOMParser();
           const docParsed = parser.parseFromString(freshAciklama, 'text/html');
 
           let anchor: HTMLAnchorElement | null = null;
-          if (updatedDoc.evidence_id) {
-            anchor = docParsed.querySelector(`a[data-evidence-id="${updatedDoc.evidence_id}"]`);
+          if (normalizedDoc.evidence_id) {
+            anchor = docParsed.querySelector(`a[data-evidence-id="${normalizedDoc.evidence_id}"]`);
           }
           if (!anchor && oldDoc.url) {
-            const normalizeUrl = (u: string) => u.split('#')[0].split('?')[0];
+            const normalizeUrl = (u: string) => toProxyStorageUrl(u.split('#')[0].split('?')[0], '');
             const targetBaseUrl = normalizeUrl(oldDoc.url);
             const allAnchors = Array.from(docParsed.querySelectorAll('a'));
             anchor = allAnchors.find(a => {
@@ -285,13 +299,15 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
           }
 
           if (anchor) {
-            anchor.setAttribute('href', updatedDoc.url);
+            anchor.setAttribute('href', normalizedDoc.url);
             freshAciklama = docParsed.body.innerHTML;
           }
         } catch (e) {
           console.error('DOMParser annotation URL update error:', e);
         }
       }
+
+      freshAciklama = sanitizeReportHtmlLinks(freshAciklama, '');
 
       setDokumanlar(newDocs);
       setAciklama(freshAciklama);
@@ -392,7 +408,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       if (pukoData) {
         setPukoId(pukoData.id);
         setOnayDurumu(pukoData.durum || 'Taslak');
-        setAciklama(pukoData.aciklama || '');
+        setAciklama(sanitizeReportHtmlLinks(pukoData.aciklama || '', ''));
         setRiskAnalizi(pukoData.risk_analizi || '');
         // handle JSONB or Text array for kanit_dosyalari
         setDokumanlar(Array.isArray(pukoData.kanit_dosyalari) ? pukoData.kanit_dosyalari : []);
@@ -505,9 +521,9 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
         alt_olcut_id: resolvedParams.id,
         puko_asamasi: phaseId,
         donem_id: selectedPeriod.id,
-        aciklama: aciklama,
+        aciklama: sanitizeReportHtmlLinks(aciklama || '', ''),
         risk_analizi: riskAnalizi,
-        kanit_dosyalari: dokumanlar
+        kanit_dosyalari: (dokumanlar || []).map(normalizeEvidenceDoc)
       };
 
       if (!isReadOnly) {
@@ -722,8 +738,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       const updatedDocs = [...dokumanlar, newDoc];
       setDokumanlar(updatedDocs);
       
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      const safeUrl = toProxyStorageUrl(newDoc.url, origin);
+      const safeUrl = toProxyStorageUrl(newDoc.url, '');
       const tagHtml = `<a data-evidence-id="${evId}" href="${safeUrl}" rel="noopener noreferrer" style="color: #ea580c; font-weight: bold; text-decoration: underline; margin: 0 4px;">[Kanıt ${newDocNo}]</a>&nbsp;`;
       
       let freshAciklama = aciklama;
@@ -763,9 +778,12 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
           newAciklama = newAciklama.replace(idTagRegex, '');
         }
         if (docToRemove.url) {
-          const escapedUrl = escapeRegExp(docToRemove.url);
-          const urlTagRegex = new RegExp(`<a\\s+[^>]*href=["']${escapedUrl}["'][^>]*>.*?<\\/a>`, 'gi');
-          newAciklama = newAciklama.replace(urlTagRegex, '');
+          const urlsToStrip = Array.from(new Set([docToRemove.url, toProxyStorageUrl(docToRemove.url, '')].filter(Boolean)));
+          for (const candidateUrl of urlsToStrip) {
+            const escapedUrl = escapeRegExp(candidateUrl);
+            const urlTagRegex = new RegExp(`<a\\s+[^>]*href=["']${escapedUrl}["'][^>]*>.*?<\\/a>`, 'gi');
+            newAciklama = newAciklama.replace(urlTagRegex, '');
+          }
         }
       }
 
@@ -842,8 +860,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
       }
 
       // 1. Yeni eklenen kanıt tag'ini editöre ekle
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      const safeUrl = toProxyStorageUrl(result.dosya.url, origin);
+      const safeUrl = toProxyStorageUrl(result.dosya.url, '');
       const tagHtml = `<a data-evidence-id="${result.evidence_id}" href="${safeUrl}" rel="noopener noreferrer" style="color: #ea580c; font-weight: bold; text-decoration: underline; margin: 0 4px;">[Kanıt ${result.evidence_no}]</a>&nbsp;`;
 
       let freshAciklama = aciklama;
@@ -1373,7 +1390,7 @@ export default function PhaseClient({ params, phaseId, phaseTitle, showEylemPlan
                   {/* Belge & Aksiyon Barı */}
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
                     <a
-                      href={toProxyStorageUrl(faaliyet.dosya_url, typeof window !== 'undefined' ? window.location.origin : '') || faaliyet.dosya_url}
+                      href={toProxyStorageUrl(faaliyet.dosya_url, '') || faaliyet.dosya_url}
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
                     >

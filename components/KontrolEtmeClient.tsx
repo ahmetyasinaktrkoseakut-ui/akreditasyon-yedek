@@ -7,6 +7,7 @@ import StepPanel from '@/components/StepPanel';
 import RichTextEditor from '@/components/RichTextEditor';
 import { useLocale, useTranslations } from 'next-intl';
 import { getLocalizedField } from '@/lib/i18n-utils';
+import { sanitizeReportHtmlLinks } from '@/lib/utils';
 import { usePeriod } from '@/contexts/PeriodContext';
 import DOMPurify from 'dompurify';
 import { logAction } from '@/lib/logger';
@@ -213,7 +214,7 @@ export default function KontrolEtmeClient({ params }: KontrolEtmeClientProps) {
         setYoneticiAnalizi(ozdegerlendirmeData.yonetici_anket_analizi || '');
       }
 
-      setBirimDegerlendirmesi(pukoData?.aciklama || ozdegerlendirmeData?.birim_anket_degerlendirmesi || '');
+      setBirimDegerlendirmesi(sanitizeReportHtmlLinks(pukoData?.aciklama || ozdegerlendirmeData?.birim_anket_degerlendirmesi || '', ''));
 
       // Anketleri Tek Sorguda Çek (Yerel veya Hedeflenen)
       const { data: anketData } = await supabase
@@ -416,7 +417,7 @@ export default function KontrolEtmeClient({ params }: KontrolEtmeClientProps) {
         alt_olcut_id: resolvedParams.id,
         puko_asamasi: 'kontrol',
         donem_id: selectedPeriod?.id,
-        aciklama: birimDegerlendirmesi,
+        aciklama: sanitizeReportHtmlLinks(birimDegerlendirmesi, ''),
         durum: 'Taslak',
         red_nedeni: null
       };
@@ -478,7 +479,7 @@ export default function KontrolEtmeClient({ params }: KontrolEtmeClientProps) {
           body: JSON.stringify({
             alt_olcut_id: String(resolvedParams.id),
             donem_id: String(selectedPeriod?.id),
-            birim_anket_degerlendirmesi: birimDegerlendirmesi,
+            birim_anket_degerlendirmesi: sanitizeReportHtmlLinks(birimDegerlendirmesi, ''),
           }),
         });
         const saveJson = await saveRes.json().catch(() => ({}));

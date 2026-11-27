@@ -10,7 +10,7 @@ import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
 import { getLocalizedField } from '@/lib/i18n-utils';
 import { usePeriod } from '@/contexts/PeriodContext';
-import { getAssignedLetter } from '@/lib/utils';
+import { getAssignedLetter, sanitizeReportHtmlLinks } from '@/lib/utils';
 
 interface OlgunlukClientProps {
   params: Promise<{ id: string }>;
@@ -86,7 +86,7 @@ export default function OlgunlukClient({ params }: OlgunlukClientProps) {
         .maybeSingle();
 
       if (pukoData) {
-        setAciklama(pukoData.aciklama || '');
+        setAciklama(sanitizeReportHtmlLinks(pukoData.aciklama || '', ''));
         setOlgunlukPuani(pukoData.olgunluk_puani || 0);
       }
     } catch (error) {
@@ -107,7 +107,7 @@ export default function OlgunlukClient({ params }: OlgunlukClientProps) {
         alt_olcut_id: resolvedParams.id,
         puko_asamasi: 'olgunluk',
         donem_id: selectedPeriod?.id,
-        aciklama: aciklama,
+        aciklama: sanitizeReportHtmlLinks(aciklama, ''),
         olgunluk_puani: olgunlukPuani,
         durum: 'Taslak',
         red_nedeni: null

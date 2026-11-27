@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { X, Download, FileText, ExternalLink, Loader2, AlertTriangle } from 'lucide-react';
-import { isInternalStorageUrl } from '@/lib/utils';
+import { extractValidStorageTarget, isInternalStorageUrl } from '@/lib/utils';
 
 export default function GlobalFileViewer() {
   const [isOpen, setIsOpen] = useState(false);
@@ -18,10 +18,11 @@ export default function GlobalFileViewer() {
     const handleGlobalMouseDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const anchor = target?.closest('a');
-      if (anchor && anchor.href) {
+      if (anchor && (anchor.getAttribute('href') || anchor.href)) {
         if (anchor.getAttribute('data-bypass-viewer') === 'true') return;
         const appOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-        const isInternal = isInternalStorageUrl(anchor.href, appOrigin);
+        const rawUrl = anchor.getAttribute('href') || anchor.href;
+        const isInternal = isInternalStorageUrl(rawUrl, appOrigin);
         if (isInternal && !anchor.hasAttribute('download')) {
           anchor.removeAttribute('target');
           anchor.target = '_self';
@@ -32,9 +33,9 @@ export default function GlobalFileViewer() {
     const handleGlobalClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const anchor = target.closest('a');
-      if (anchor && anchor.href) {
+      if (anchor && (anchor.getAttribute('href') || anchor.href)) {
         if (anchor.getAttribute('data-bypass-viewer') === 'true') return;
-        const url = anchor.href;
+        const url = anchor.getAttribute('href') || anchor.href;
         const isDownload = anchor.hasAttribute('download');
         const appOrigin = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -75,27 +76,15 @@ export default function GlobalFileViewer() {
             setAuthError(null);
 
             try {
-              let bucket = 'dokumanlar';
-              let filePath = '';
-              if (url.includes('/storage/v1/object/')) {
-                const parts = url.split('/storage/v1/object/');
-                const afterObject = parts[1]?.replace(/^public\//, '')?.replace(/^sign\//, '') || '';
-                const [b, ...pathParts] = afterObject.split('?')[0].split('/');
-                bucket = b;
-                filePath = pathParts.join('/');
-              } else if (url.includes('/api/storage/')) {
-                const parts = url.split('/api/storage/')[1]?.split('?')[0].split('/');
-                bucket = parts[0];
-                filePath = parts.slice(1).join('/');
-              }
+              const target = extractValidStorageTarget(url, appOrigin);
 
-              if (bucket && filePath) {
-                const proxyUrl = `/api/storage/${bucket}/${filePath}`;
+              if (target) {
+                const baseProxyUrl = `/api/storage/${target.bucket}/${target.encodedFilePath}`;
                 // Probe proxy for authorization (Gerçek HEAD denetimi)
-                const probe = await fetch(proxyUrl, { method: 'HEAD' });
+                const probe = await fetch(baseProxyUrl, { method: 'HEAD' });
 
                 if (probe.status === 200) {
-                  setViewerUrl(proxyUrl);
+                  setViewerUrl(`${baseProxyUrl}${target.hashFragment}`);
                   setIsOpen(true);
                   return;
                 } else if (probe.status === 401 || probe.status === 403) {

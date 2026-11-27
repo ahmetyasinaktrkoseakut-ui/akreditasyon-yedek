@@ -150,9 +150,8 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
         cleanIcerikEn = cleanIcerikEn.replace(/<hr\s*\/?>/gi, '');
         cleanIcerikEn = cleanIcerikEn.replace(/Olgunluk Düzeyi Puanı.*?\d\s*\/\s*\d/gi, '');
 
-        const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-        setRaporMetni(sanitizeReportHtmlLinks(cleanIcerik, currentOrigin));
-        setRaporMetniEn(sanitizeReportHtmlLinks(cleanIcerikEn, currentOrigin));
+        setRaporMetni(sanitizeReportHtmlLinks(cleanIcerik, ''));
+        setRaporMetniEn(sanitizeReportHtmlLinks(cleanIcerikEn, ''));
         setKanitlar(raporData?.kanitlar ?? []);
         const hasReportContent =
           !isHtmlContentEmpty(cleanIcerik) ||
@@ -328,7 +327,7 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
 
                   // 2. Secondary: Match by normalized href
                   if (!anchor && k.url) {
-                    const normalizeUrl = (u: string) => u.split('#')[0].split('?')[0];
+                    const normalizeUrl = (u: string) => toProxyStorageUrl(u.split('#')[0].split('?')[0], '');
                     const targetBaseUrl = normalizeUrl(k.url);
                     const targetAnnoBaseUrl = k.annotated_url ? normalizeUrl(k.annotated_url) : null;
 
@@ -358,8 +357,7 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
                                       (k.annotated_url && phaseText.includes(k.annotated_url)) ||
                                       (k.evidence_id && phaseText.includes(k.evidence_id));
               if (!isAlreadyInline) {
-                const origin = typeof window !== 'undefined' ? window.location.origin : '';
-                const safeUrl = toProxyStorageUrl(ev.url, origin);
+                const safeUrl = toProxyStorageUrl(ev.url, '');
                 unplacedEvidenceStrings.push(`<a href="${safeUrl}" rel="noopener noreferrer" style="color: #ea580c; text-decoration: underline;">[Kanıt ${ev.no}]</a>`);
               }
             });
@@ -396,8 +394,7 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
 
       const uniqueKanitlar = birlesikKanitlar;
 
-      const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-      const safeBirlesik = sanitizeReportHtmlLinks(birlesikMetin ?? '', currentOrigin);
+      const safeBirlesik = sanitizeReportHtmlLinks(birlesikMetin ?? '', '');
 
       setRaporMetni(safeBirlesik);
       setRaporMetniEn(safeBirlesik);
@@ -417,12 +414,18 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
     try {
       if (!selectedPeriod) throw new Error("Aktif dönem seçili değil.");
       
+      const normalizedKanitlar = (kanitlar ?? []).map((k: any) => ({
+        ...k,
+        ...(k?.url ? { url: toProxyStorageUrl(k.url, '') } : {}),
+        ...(k?.annotated_url ? { annotated_url: toProxyStorageUrl(k.annotated_url, '') } : {}),
+      }));
+
       const upsertData = {
         alt_olcut_id: String(resolvedParams.id),
         donem_id: String(selectedPeriod.id),
-        icerik: raporMetni ?? '',
-        icerik_en: raporMetniEn ?? '',
-        kanitlar: kanitlar ?? [],
+        icerik: sanitizeReportHtmlLinks(raporMetni ?? '', ''),
+        icerik_en: sanitizeReportHtmlLinks(raporMetniEn ?? '', ''),
+        kanitlar: normalizedKanitlar,
         onay_durumu: 'bekliyor',
         red_nedeni: null,
       };
@@ -771,8 +774,7 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
 
     // Hedef 'en' ise [Evidence X], 'tr' ise [Kanıt X]
     const label = target === 'en' ? `[Evidence ${index + 1}]` : `[Kanıt ${index + 1}]`;
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const safeUrl = toProxyStorageUrl(doc.url, origin);
+    const safeUrl = toProxyStorageUrl(doc.url, '');
     const evIdAttr = doc.evidence_id ? ` data-evidence-id="${doc.evidence_id}"` : '';
     const anchorHTML = `&nbsp;<a${evIdAttr} href="${safeUrl}" rel="noopener noreferrer" style="color: #2563eb; font-weight: bold; text-decoration: underline; cursor: pointer;">${label}</a>&nbsp;`;
     
@@ -840,8 +842,7 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
       
       // Metin içine ekle - [Kanıt X] formatında
       const newIndex = updatedKanitlar.length;
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      const safeUrl = toProxyStorageUrl(publicUrl, origin);
+      const safeUrl = toProxyStorageUrl(publicUrl, '');
       const anchorHTML = `&nbsp;<a href="${safeUrl}" rel="noopener noreferrer" style="color: #2563eb; font-weight: bold; text-decoration: underline; cursor: pointer;">[Kanıt ${newIndex}]</a>&nbsp;`;
       
       if (editorRef.current) {
@@ -1100,7 +1101,7 @@ export default function OzdegerlendirmeRaporuClient({ params }: OzdegerlendirmeR
                           </td>
                           <td className="py-3 px-4">
                             <a 
-                              href={toProxyStorageUrl(doc.url, typeof window !== 'undefined' ? window.location.origin : '') || doc.url} 
+                              href={toProxyStorageUrl(doc.url, '') || doc.url} 
                               target="_blank" 
                               rel="noopener noreferrer" 
                               className="text-slate-700 hover:text-blue-600 font-medium flex items-center gap-2"

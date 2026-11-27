@@ -472,7 +472,7 @@ export default function RaporlarClient() {
                                 <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
                                   <div
                                     className="prose prose-sm max-w-none prose-slate"
-                                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(sanitizeReportHtmlLinks(combinedText, typeof window !== 'undefined' ? window.location.origin : '')) }}
+                                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(sanitizeReportHtmlLinks(combinedText, '')) }}
                                   />
                                 </div>
 
@@ -498,7 +498,7 @@ export default function RaporlarClient() {
                                         {evidencesWithNumbers.map((k) => (
                                           <a
                                             key={k.url}
-                                            href={toProxyStorageUrl(k.url, typeof window !== 'undefined' ? window.location.origin : '') || k.url}
+                                            href={toProxyStorageUrl(k.url, '') || k.url}
 
                                             rel="noopener noreferrer"
                                             className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
@@ -533,7 +533,7 @@ export default function RaporlarClient() {
                                       {evidencesWithNumbers.map((k) => (
                                         <a
                                           key={k.url}
-                                          href={toProxyStorageUrl(k.url, typeof window !== 'undefined' ? window.location.origin : '') || k.url}
+                                          href={toProxyStorageUrl(k.url, '') || k.url}
 
                                           rel="noopener noreferrer"
                                           className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"

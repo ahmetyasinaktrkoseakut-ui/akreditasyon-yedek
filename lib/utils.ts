@@ -1,3 +1,5 @@
+import { PROJECT_LEGACY_APP_ORIGINS } from './legacyOrigins';
+
 export function getAssignedLetter(baslik?: string): string {
   const rawTitle = (baslik || '').toLowerCase();
   if (rawTitle.includes('kalite')) return 'A';
@@ -40,85 +42,256 @@ export function validateFileSize(file: File): { valid: boolean; error?: string }
   return { valid: true };
 }
 
-/**
- * Validates whether a given URL points strictly to this application's internal storage
- * (either a relative /api/storage/ path, a same-origin absolute /api/storage/ path,
- * or the project's configured Supabase storage host).
- * Fails safely (returns false) if Supabase URL configuration is missing or malformed.
- */
-export function isInternalStorageUrl(url?: string, appOrigin?: string): boolean {
-  if (!url) return false;
-  const trimmed = url.trim();
-  if (!trimmed) return false;
+export const ALLOWED_STORAGE_BUCKETS = new Set(['dokumanlar', 'kanit_dosyalari'] as const);
+export type AllowedStorageBucket = 'dokumanlar' | 'kanit_dosyalari';
 
-  // 1. Göreceli proxy yolu: /api/storage/
-  if (trimmed.startsWith('/api/storage/')) {
+export interface ValidStorageTarget {
+  bucket: AllowedStorageBucket;
+  encodedFilePath: string;
+  decodedFilePath: string;
+  hashFragment: string;
+}
+
+const CONTROL_CHAR_REGEX = /[\u0000-\u001f\u007f]/;
+const HEX_PERCENT_REGEX = /%[0-9a-fA-F]{2}/;
+
+function getAllowedAppOrigins(appOrigin?: string): Set<string> {
+  const origins = new Set<string>();
+  const addCandidate = (raw?: string | null) => {
+    if (!raw) return;
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        origins.add(parsed.origin);
+      }
+    } catch {
+      // Yoksay: geçersiz origin dizesi
+    }
+  };
+
+  addCandidate(appOrigin);
+  if (typeof window !== 'undefined') {
+    addCandidate(window.location?.origin);
+  }
+  addCandidate(process.env.NEXT_PUBLIC_APP_URL);
+  for (const legacyOrigin of PROJECT_LEGACY_APP_ORIGINS) {
+    addCandidate(legacyOrigin);
+  }
+  const envLegacy = process.env.NEXT_PUBLIC_LEGACY_APP_ORIGINS;
+  if (envLegacy) {
+    for (const part of envLegacy.split(',')) {
+      addCandidate(part);
+    }
+  }
+  return origins;
+}
+
+function tryDecodeOnce(str: string): string | null {
+  try {
+    return decodeURIComponent(str);
+  } catch {
+    return null;
+  }
+}
+
+function hasForbiddenSegmentChars(decoded: string, isFirstSegment: boolean): boolean {
+  if (
+    !decoded ||
+    decoded === '.' ||
+    decoded === '..' ||
+    decoded.includes('/') ||
+    decoded.includes('\\') ||
+    CONTROL_CHAR_REGEX.test(decoded)
+  ) {
     return true;
   }
-
-  const currentOrigin = (appOrigin || (typeof window !== 'undefined' ? window.location?.origin : '') || '').trim();
-
-  try {
-    const parsed = new URL(trimmed, currentOrigin || 'http://localhost');
-
-    // 2. Tam URL ile aynı-origin /api/storage/ denetimi
-    if (parsed.pathname.startsWith('/api/storage/')) {
-      if (currentOrigin) {
-        try {
-          const parsedOrigin = new URL(currentOrigin).origin;
-          if (parsed.origin === parsedOrigin) {
-            return true;
-          }
-        } catch {
-          return false;
-        }
-      }
-      return false;
-    }
-
-    // 3. Yapılandırılmış proje Supabase depolama adresi denetimi (Fail-Safe)
-    if (trimmed.includes('/storage/v1/object/')) {
-      const supabaseEnv = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      if (!supabaseEnv) return false;
-      try {
-        const parsedSupabase = new URL(supabaseEnv);
-        if (parsed.host === parsedSupabase.host && parsed.pathname.includes('/storage/v1/object/')) {
-          return true;
-        }
-      } catch {
-        return false;
-      }
-    }
-  } catch {
-    return false;
+  if (isFirstSegment && /^(?:javascript|data):/i.test(decoded)) {
+    return true;
   }
-
   return false;
 }
 
-/**
- * Converts any legacy Supabase storage URL or relative proxy path
- * into a fully-qualified application proxy URL for Word reports and links.
- */
-export function toProxyStorageUrl(url: string, origin: string): string {
-  if (!url) return url;
-  if (!isInternalStorageUrl(url, origin)) return url;
-  const trimmed = url.trim();
-  // Supabase storage format (e.g. .../storage/v1/object/public/bucket/path or .../storage/v1/object/sign/bucket/path)
-  if (trimmed.includes('/storage/v1/object/')) {
-    const parts = trimmed.split('/storage/v1/object/');
-    const afterObject = parts[1]?.replace(/^public\//, '')?.replace(/^sign\//, '') || '';
-    const [bucket, ...pathParts] = afterObject.split('?')[0].split('/');
-    if (bucket && pathParts.length > 0) {
-      const cleanPath = pathParts.join('/');
-      return `${origin}/api/storage/${bucket}/${cleanPath}`;
+function validateRawPathSegmentsBeforeUrlParse(rawPath: string): boolean {
+  if (
+    !rawPath.startsWith('/') ||
+    rawPath.startsWith('//') ||
+    rawPath.includes('\\') ||
+    rawPath.includes('//') ||
+    CONTROL_CHAR_REGEX.test(rawPath)
+  ) {
+    return false;
+  }
+
+  const segments = rawPath.slice(1).split('/');
+  for (const seg of segments) {
+    if (!seg || seg === '.' || seg === '..') {
+      return false;
+    }
+    const dec1 = tryDecodeOnce(seg);
+    if (dec1 === null || hasForbiddenSegmentChars(dec1, false)) {
+      return false;
+    }
+    if (HEX_PERCENT_REGEX.test(dec1)) {
+      const dec2 = tryDecodeOnce(dec1);
+      if (dec2 !== null && hasForbiddenSegmentChars(dec2, false)) {
+        return false;
+      }
     }
   }
-  // Relative /api/storage/ format
-  if (trimmed.startsWith('/api/storage/')) {
-    return `${origin}${trimmed}`;
+  return true;
+}
+
+/**
+ * Verilen URL'nin yalnızca bu uygulamanın izin verilen depolama alanlarına
+ * (`dokumanlar` veya `kanit_dosyalari`) işaret edip etmediğini doğrular ve
+ * güvenli, segment bazlı yeniden kodlanmış proxy hedefini döndürür.
+ */
+export function extractValidStorageTarget(url?: string, appOrigin?: string): ValidStorageTarget | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed || CONTROL_CHAR_REGEX.test(trimmed)) return null;
+
+  // 1. #page=N ekini dosya yolundan ayrı tut
+  const hashIdx = trimmed.indexOf('#');
+  const rawHash = hashIdx >= 0 ? trimmed.slice(hashIdx) : '';
+  const withoutHash = hashIdx >= 0 ? trimmed.slice(0, hashIdx) : trimmed;
+  const pageMatch = rawHash.match(/^#page=([1-9]\d*)$/i);
+  const hashFragment = pageMatch ? `#page=${pageMatch[1]}` : '';
+
+  // 2. ?query kısmını ayır
+  const qIdx = withoutHash.indexOf('?');
+  const rawWithoutQuery = qIdx >= 0 ? withoutHash.slice(0, qIdx) : withoutHash;
+
+  // 3. new URL(...) normalizasyonundan ÖNCE ham yolu çıkar
+  const isHttp = /^https?:\/\//i.test(rawWithoutQuery);
+  let rawPathSlice = '';
+  if (isHttp) {
+    const schemeEnd = rawWithoutQuery.indexOf('://') + 3;
+    const pathStart = rawWithoutQuery.indexOf('/', schemeEnd);
+    if (pathStart === -1) return null;
+    rawPathSlice = rawWithoutQuery.slice(pathStart);
+  } else if (rawWithoutQuery.startsWith('/')) {
+    rawPathSlice = rawWithoutQuery;
+  } else {
+    return null;
   }
-  return trimmed;
+
+  // 4. Ham yolda traversal / bozuk segment denetimi (new URL öncesi)
+  if (!validateRawPathSegmentsBeforeUrlParse(rawPathSlice)) {
+    return null;
+  }
+
+  let rawBucket = '';
+  let rawFileSegments: string[] = [];
+
+  if (!isHttp && rawPathSlice.startsWith('/api/storage/')) {
+    const rest = rawPathSlice.slice('/api/storage/'.length);
+    const parts = rest.split('/');
+    rawBucket = parts[0] || '';
+    rawFileSegments = parts.slice(1);
+  } else if (isHttp && rawPathSlice.startsWith('/api/storage/')) {
+    let parsed: URL;
+    try {
+      parsed = new URL(rawWithoutQuery);
+    } catch {
+      return null;
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    if (!getAllowedAppOrigins(appOrigin).has(parsed.origin)) {
+      return null;
+    }
+    const rest = rawPathSlice.slice('/api/storage/'.length);
+    const parts = rest.split('/');
+    rawBucket = parts[0] || '';
+    rawFileSegments = parts.slice(1);
+  } else if (isHttp && rawPathSlice.startsWith('/storage/v1/object/')) {
+    const supabaseEnv = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!supabaseEnv) return null;
+    let parsed: URL;
+    let parsedSupabase: URL;
+    try {
+      parsed = new URL(rawWithoutQuery);
+      parsedSupabase = new URL(supabaseEnv);
+    } catch {
+      return null;
+    }
+    if (parsed.host !== parsedSupabase.host) {
+      return null;
+    }
+    const afterObj = rawPathSlice
+      .slice('/storage/v1/object/'.length)
+      .replace(/^(?:public|sign|authenticated)\//i, '');
+    const parts = afterObj.split('/');
+    rawBucket = parts[0] || '';
+    rawFileSegments = parts.slice(1);
+  } else {
+    return null;
+  }
+
+  // 5. Bucket ve her dosya yolu segmentini çözüp yeniden kodla
+  const decodedBucket = tryDecodeOnce(rawBucket);
+  if (
+    decodedBucket !== 'dokumanlar' &&
+    decodedBucket !== 'kanit_dosyalari'
+  ) {
+    return null;
+  }
+  if (rawFileSegments.length === 0) {
+    return null;
+  }
+
+  const decodedSegments: string[] = [];
+  const encodedSegments: string[] = [];
+
+  for (let idx = 0; idx < rawFileSegments.length; idx++) {
+    const dec1 = tryDecodeOnce(rawFileSegments[idx]);
+    if (dec1 === null || hasForbiddenSegmentChars(dec1, idx === 0)) {
+      return null;
+    }
+    if (HEX_PERCENT_REGEX.test(dec1)) {
+      const dec2 = tryDecodeOnce(dec1);
+      if (dec2 !== null && hasForbiddenSegmentChars(dec2, idx === 0)) {
+        return null;
+      }
+    }
+    decodedSegments.push(dec1);
+    encodedSegments.push(encodeURIComponent(dec1));
+  }
+
+  return {
+    bucket: decodedBucket,
+    encodedFilePath: encodedSegments.join('/'),
+    decodedFilePath: decodedSegments.join('/'),
+    hashFragment,
+  };
+}
+
+/**
+ * Validates whether a given URL points strictly to this application's internal storage
+ * (either a valid /api/storage/<bucket>/<path> path, an allowed app origin / legacy origin
+ * proxy URL, or the project's configured Supabase storage host).
+ */
+export function isInternalStorageUrl(url?: string, appOrigin?: string): boolean {
+  return extractValidStorageTarget(url, appOrigin) !== null;
+}
+
+/**
+ * Converts any valid internal storage URL (Supabase storage, legacy app domain proxy,
+ * or relative proxy path) into a canonical proxy URL.
+ * Returns a domain-independent relative `/api/storage/...` path when `origin` is empty,
+ * or `${origin}/api/storage/...` when `origin` is provided (e.g., Word export).
+ */
+export function toProxyStorageUrl(url: string, origin: string = ''): string {
+  if (!url) return url;
+  const target = extractValidStorageTarget(url, origin);
+  if (!target) return url;
+  const relativePath = `/api/storage/${target.bucket}/${target.encodedFilePath}${target.hashFragment}`;
+  const cleanOrigin = (origin || '').trim().replace(/\/+$/, '');
+  return cleanOrigin ? `${cleanOrigin}${relativePath}` : relativePath;
 }
 
 const SPLIT_EVIDENCE_TAG_REGEX =
@@ -255,11 +428,11 @@ export function healSplitEvidenceTags(
  * strips target="_blank" specifically and only from internal storage links,
  * and heals any fragmented / split evidence link tags created by rich-text copy-pasting.
  */
-export function sanitizeReportHtmlLinks(html: string, origin: string): string {
+export function sanitizeReportHtmlLinks(html: string, origin: string = ''): string {
   if (!html) return html;
   const healed = healSplitEvidenceTags(html);
   return healed.replace(/<a\s+([^>]*?)href=(["'])(.*?)\2([^>]*?)>/gi, (match, beforeHref, quote, href, afterHref) => {
-    if (isInternalStorageUrl(href, origin)) {
+    if (extractValidStorageTarget(href, origin)) {
       const convertedHref = toProxyStorageUrl(href, origin);
       const cleanBefore = beforeHref.replace(/\s*target=(["'])_blank\1/gi, '');
       const cleanAfter = afterHref.replace(/\s*target=(["'])_blank\1/gi, '');
